@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -398,7 +398,7 @@ function CreateQuestModal({ courseId, onClose, onSave, initialData, draft }: Cre
         <div className="p-4 border-t border-gray-100 flex-shrink-0 flex items-center justify-between">
           <button onClick={onClose} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">취소</button>
           <div className="flex gap-2">
-            <button onClick={handleSave} disabled={saving}
+            <button onClick={() => handleSave(false)} disabled={saving}
               className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 disabled:opacity-60 text-gray-700 rounded-xl px-4 py-2 text-sm transition-colors"
               style={{ fontWeight: 500 }}>
               <Save size={14} />{isEdit ? (saving ? "저장 중..." : "저장") : (saving ? "저장 중..." : "임시 저장")}
@@ -426,6 +426,8 @@ interface AiDraftModalProps {
 }
 
 function AiDraftModal({ courseId, onClose, onDraftReady }: AiDraftModalProps) {
+  const { files } = useLectureFiles();
+  const [selectedWeek, setSelectedWeek] = useState("");
   const [scope, setScope] = useState("");
   const [difficulty, setDifficulty] = useState<QuestDifficulty>("보통");
   const [questionCount, setQuestionCount] = useState(3);
@@ -435,6 +437,24 @@ function AiDraftModal({ courseId, onClose, onDraftReady }: AiDraftModalProps) {
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // 업로드된 파일 기준 사용 가능한 주차 목록
+  const availableWeeks = useMemo(() => {
+    const weeks = [...new Set(files.filter((f) => f.week).map((f) => f.week))];
+    return weeks.sort((a, b) => {
+      const na = parseInt(a) || 0;
+      const nb = parseInt(b) || 0;
+      return na - nb || a.localeCompare(b);
+    });
+  }, [files]);
+
+  const handleWeekSelect = (week: string) => {
+    setSelectedWeek(week);
+    if (!week) { setScope(""); return; }
+    const weekFiles = files.filter((f) => f.week === week);
+    const topic = weekFiles.find((f) => f.topic)?.topic ?? "";
+    setScope(topic ? `${week} ${topic}` : `${week} 강의 전체`);
+  };
 
   const targetOptions = [
     "전체 수강생 (50명)",
@@ -452,6 +472,7 @@ function AiDraftModal({ courseId, onClose, onDraftReady }: AiDraftModalProps) {
       const req: AiDraftRequest = {
         scope, difficulty, questionCount, optionCount, targetGroup,
         xp, description: description || undefined,
+        week: selectedWeek || undefined,
       };
       const res = await generateAiDraft(courseId, req);
       const mcQuestions: MCQuestion[] = res.questions.map((q) => ({
@@ -488,6 +509,35 @@ function AiDraftModal({ courseId, onClose, onDraftReady }: AiDraftModalProps) {
         </div>
 
         <div className="overflow-y-auto flex-1 p-5 space-y-4">
+          {/* 주차 선택 */}
+          <div>
+            <label className="block text-sm text-gray-600 mb-1.5" style={{ fontWeight: 500 }}>
+              주차 선택 <span className="text-gray-300" style={{ fontWeight: 400 }}>(선택 시 학습 범위 자동 입력)</span>
+            </label>
+            <div className="relative">
+              <select
+                value={selectedWeek}
+                onChange={(e) => handleWeekSelect(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 pr-8 text-sm text-gray-700 outline-none focus:border-[#37b1b1] appearance-none bg-white cursor-pointer"
+              >
+                <option value="">주차를 선택하세요</option>
+                {availableWeeks.length > 0 ? (
+                  availableWeeks.map((w) => (
+                    <option key={w} value={w}>{w}</option>
+                  ))
+                ) : (
+                  WEEK_OPTIONS.map((w) => (
+                    <option key={w} value={w}>{w}</option>
+                  ))
+                )}
+              </select>
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            </div>
+            {availableWeeks.length === 0 && (
+              <p className="text-xs text-amber-500 mt-1">업로드된 강의 자료가 없어 기본 주차 목록을 표시합니다.</p>
+            )}
+          </div>
+
           <div>
             <label className="block text-sm text-gray-600 mb-1.5" style={{ fontWeight: 500 }}>학습 범위 *</label>
             <input type="text" value={scope} onChange={(e) => setScope(e.target.value)}

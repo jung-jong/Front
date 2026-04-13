@@ -91,13 +91,15 @@ interface QuestStartModalProps {
   quest: Quest;
   courseId: string;
   onClose: () => void;
+  onComplete?: (questId: string) => void;
+  viewOnly?: boolean;
 }
 
-function QuestStartModal({ quest, courseId, onClose }: QuestStartModalProps) {
+function QuestStartModal({ quest, courseId, onClose, onComplete, viewOnly = false }: QuestStartModalProps) {
   const [content, setContent] = useState<QuestContent | null>(null);
   const [loadingContent, setLoadingContent] = useState(true);
   const [answers, setAnswers] = useState<Record<string, number | boolean | string>>({});
-  const [submitted, setSubmitted] = useState(false);
+  const [submitted, setSubmitted] = useState(viewOnly);
   const [result, setResult] = useState<{ score: number; total: number; xpEarned: number } | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -123,11 +125,13 @@ function QuestStartModal({ quest, courseId, onClose }: QuestStartModalProps) {
       const res = await submitQuestAnswers(courseId, quest.id, answers);
       setResult(res);
       setSubmitted(true);
+      onComplete?.(quest.id);
     } catch {
       // 오프라인 fallback: 로컬에서 채점
       const score = content.questions.filter((q) => answers[q.id] === q.answer).length;
       setResult({ score, total: content.questions.length, xpEarned: Math.round((quest.xp ?? 100) * (score / content.questions.length)) });
       setSubmitted(true);
+      onComplete?.(quest.id);
     } finally {
       setSubmitting(false);
     }
@@ -183,11 +187,23 @@ function QuestStartModal({ quest, courseId, onClose }: QuestStartModalProps) {
 
           {content && (
             <>
+              {viewOnly && (
+                <div className="rounded-xl p-4 mb-5 flex items-center gap-3 bg-green-50 border border-green-200">
+                  <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+                    <CheckCircle size={18} className="text-green-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-green-700" style={{ fontWeight: 700 }}>이미 완료한 퀘스트입니다</p>
+                    <p className="text-xs text-gray-500 mt-0.5">문제를 다시 확인할 수 있지만 재제출은 불가합니다.</p>
+                  </div>
+                </div>
+              )}
+
               <div className="bg-gray-50 rounded-xl p-4 mb-5">
                 <p className="text-sm text-gray-600 leading-relaxed">{content.intro}</p>
               </div>
 
-              {submitted && result && (
+              {submitted && result && !viewOnly && (
                 <div className={`rounded-xl p-4 mb-5 flex items-center gap-3 ${result.score === result.total ? "bg-green-50 border border-green-200" : "bg-orange-50 border border-orange-200"}`}>
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${result.score === result.total ? "bg-green-100" : "bg-orange-100"}`}>
                     {result.score === result.total ? <Trophy size={18} className="text-green-600" /> : <Award size={18} className="text-orange-500" />}
@@ -232,7 +248,8 @@ function QuestStartModal({ quest, courseId, onClose }: QuestStartModalProps) {
                             const wrong = submitted && selected && q.answer !== val;
                             return (
                               <button key={label} onClick={() => handleOX(q.id, val)}
-                                className={`flex-1 py-2.5 rounded-xl text-sm transition-all ${wrong ? "bg-red-100 text-red-700 border border-red-300" : correct ? "bg-green-100 text-green-700 border border-green-300" : selected ? "bg-[#e0f7f7] text-[#1d6e6e] border border-[#b3e5e5]" : "bg-gray-50 text-gray-600 border border-gray-200 hover:bg-[#f0fdfd]"}`}
+                                disabled={viewOnly}
+                                className={`flex-1 py-2.5 rounded-xl text-sm transition-all ${viewOnly ? "opacity-60 cursor-not-allowed" : ""} ${wrong ? "bg-red-100 text-red-700 border border-red-300" : correct ? "bg-green-100 text-green-700 border border-green-300" : selected ? "bg-[#e0f7f7] text-[#1d6e6e] border border-[#b3e5e5]" : "bg-gray-50 text-gray-600 border border-gray-200 hover:bg-[#f0fdfd]"}`}
                                 style={{ fontWeight: 700, fontSize: "1.1rem" }}>
                                 {label}
                               </button>
@@ -249,7 +266,8 @@ function QuestStartModal({ quest, courseId, onClose }: QuestStartModalProps) {
                             const wrong = submitted && selected && q.answer !== oi;
                             return (
                               <button key={oi} onClick={() => handleMultiple(q.id, oi)}
-                                className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-left transition-all ${wrong ? "bg-red-50 text-red-700 border border-red-200" : correct ? "bg-green-50 text-green-700 border border-green-200" : selected ? "bg-[#f0fdfd] text-[#1d6e6e] border border-[#b3e5e5]" : "bg-gray-50 text-gray-600 border border-gray-100 hover:bg-[#f0fdfd]"}`}>
+                                disabled={viewOnly}
+                                className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-left transition-all ${viewOnly ? "opacity-60 cursor-not-allowed" : ""} ${wrong ? "bg-red-50 text-red-700 border border-red-200" : correct ? "bg-green-50 text-green-700 border border-green-200" : selected ? "bg-[#f0fdfd] text-[#1d6e6e] border border-[#b3e5e5]" : "bg-gray-50 text-gray-600 border border-gray-100 hover:bg-[#f0fdfd]"}`}>
                                 <span className={`w-5 h-5 rounded-full text-xs flex items-center justify-center flex-shrink-0 ${selected || correct ? "bg-[#e0f7f7] text-[#1d6e6e]" : "bg-gray-200 text-gray-500"}`} style={{ fontWeight: 700 }}>
                                   {oi + 1}
                                 </span>
@@ -275,7 +293,13 @@ function QuestStartModal({ quest, courseId, onClose }: QuestStartModalProps) {
 
         <div className="p-4 border-t border-gray-100 flex-shrink-0 flex items-center justify-between gap-3">
           <button onClick={onClose} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">닫기</button>
-          {content && !submitted ? (
+          {viewOnly ? (
+            <button onClick={onClose}
+              className="flex items-center gap-2 bg-gray-500 hover:bg-gray-600 text-white rounded-xl px-5 py-2.5 text-sm transition-colors"
+              style={{ fontWeight: 600 }}>
+              <CheckCircle size={15} />확인
+            </button>
+          ) : content && !submitted ? (
             <button
               onClick={handleSubmit}
               disabled={submitting || Object.keys(answers).length < content.questions.length}
@@ -313,6 +337,7 @@ export function StudentWorkspace() {
   const [rightTab, setRightTab] = useState<"note" | "material">("note");
   const [showQuestModal, setShowQuestModal] = useState(false);
   const [activeQuest, setActiveQuest] = useState<Quest | null>(null);
+  const [questViewOnly, setQuestViewOnly] = useState(false);
   const [expandedWeak, setExpandedWeak] = useState<string | null>(null);
   const [expandedWeek, setExpandedWeek] = useState<string | null>(null);
 
@@ -397,13 +422,25 @@ export function StudentWorkspace() {
   // ─── 핸들러 ─────────────────────────────────────────────────────────────────
 
   const markAllRead = useCallback(() => {
-    markAllNotificationsRead(courseId).catch(() => {});
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    markAllNotificationsRead(courseId).catch(() => {
+      // API 실패 시 서버 상태 재조회로 복원
+      getNotifications(courseId).then(setNotifications).catch(() => {});
+    });
   }, [courseId]);
 
   const markRead = useCallback((id: string) => {
-    markNotificationRead(courseId, id).catch(() => {});
     setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n));
+    markNotificationRead(courseId, id).catch(() => {
+      // API 실패 시 서버 상태 재조회로 복원
+      getNotifications(courseId).then(setNotifications).catch(() => {});
+    });
+  }, [courseId]);
+
+  const handleQuestComplete = useCallback((questId: string) => {
+    setQuests((prev) => prev.map((q) => q.id === questId ? { ...q, completed: true } : q));
+    // 퀘스트 완료 후 stats(XP, 완료 퀘스트 수) 즉시 갱신
+    getMyStats(courseId).then(setMyStats).catch(() => {});
   }, [courseId]);
 
   const sendMessage = useCallback(async () => {
@@ -868,9 +905,16 @@ export function StudentWorkspace() {
                 <>
                   <p className="text-xs text-gray-400 mb-2" style={{ fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>🤖 AI 퀘스트</p>
                   {quests.filter((q) => q.type === "ai").map((q) => (
-                    <div key={q.id} className="border border-gray-100 rounded-xl p-4">
+                    <div key={q.id} className={`border rounded-xl p-4 ${q.completed ? "border-green-100 bg-green-50/40" : "border-gray-100"}`}>
                       <div className="flex items-start justify-between gap-2 mb-2">
-                        <p className="text-sm text-gray-800" style={{ fontWeight: 600 }}>{q.title}</p>
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <p className="text-sm text-gray-800 truncate" style={{ fontWeight: 600 }}>{q.title}</p>
+                          {q.completed && (
+                            <span className="text-xs bg-green-100 text-green-700 rounded-full px-2 py-0.5 flex-shrink-0 flex items-center gap-1">
+                              <CheckCircle size={10} />완료
+                            </span>
+                          )}
+                        </div>
                         {q.difficulty && <span className={`text-xs rounded-full px-2 py-0.5 flex-shrink-0 ${difficultyColor[q.difficulty]}`}>{q.difficulty}</span>}
                       </div>
                       {q.description && <p className="text-xs text-gray-500 mb-3">{q.description}</p>}
@@ -879,10 +923,17 @@ export function StudentWorkspace() {
                           {q.deadline && <span>마감 {q.deadline}</span>}
                           {q.xp && <span className="flex items-center gap-1 text-yellow-600"><Zap size={10} />{q.xp} XP</span>}
                         </div>
-                        <button onClick={() => { setShowQuestModal(false); setActiveQuest(q); }}
-                          className="flex items-center gap-1.5 text-xs bg-[#37b1b1] text-white rounded-lg px-3 py-1.5 hover:bg-[#2a9090] transition-colors">
-                          <Play size={11} />시작하기
-                        </button>
+                        {q.completed ? (
+                          <button onClick={() => { setShowQuestModal(false); setActiveQuest(q); setQuestViewOnly(true); }}
+                            className="flex items-center gap-1.5 text-xs bg-gray-200 text-gray-600 rounded-lg px-3 py-1.5 hover:bg-gray-300 transition-colors">
+                            <BookOpen size={11} />결과 보기
+                          </button>
+                        ) : (
+                          <button onClick={() => { setShowQuestModal(false); setActiveQuest(q); setQuestViewOnly(false); }}
+                            className="flex items-center gap-1.5 text-xs bg-[#37b1b1] text-white rounded-lg px-3 py-1.5 hover:bg-[#2a9090] transition-colors">
+                            <Play size={11} />시작하기
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -893,11 +944,16 @@ export function StudentWorkspace() {
                 <>
                   <p className="text-xs text-gray-400 mt-4 mb-2" style={{ fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>👨‍🏫 교수님 퀘스트</p>
                   {quests.filter((q) => q.type === "professor").map((q) => (
-                    <div key={q.id} className="border-2 border-yellow-300 bg-yellow-50 rounded-xl p-4">
+                    <div key={q.id} className={`border-2 rounded-xl p-4 ${q.completed ? "border-green-200 bg-green-50/40" : "border-yellow-300 bg-yellow-50"}`}>
                       <div className="flex items-start justify-between gap-2 mb-2">
-                        <div className="flex items-center gap-2">
-                          <Star size={14} className="text-yellow-500 flex-shrink-0" />
-                          <p className="text-sm text-gray-800" style={{ fontWeight: 600 }}>{q.title}</p>
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          {!q.completed && <Star size={14} className="text-yellow-500 flex-shrink-0" />}
+                          <p className="text-sm text-gray-800 truncate" style={{ fontWeight: 600 }}>{q.title}</p>
+                          {q.completed && (
+                            <span className="text-xs bg-green-100 text-green-700 rounded-full px-2 py-0.5 flex-shrink-0 flex items-center gap-1">
+                              <CheckCircle size={10} />완료
+                            </span>
+                          )}
                         </div>
                         {q.difficulty && <span className={`text-xs rounded-full px-2 py-0.5 flex-shrink-0 ${difficultyColor[q.difficulty]}`}>{q.difficulty}</span>}
                       </div>
@@ -907,10 +963,17 @@ export function StudentWorkspace() {
                           {q.deadline && <span>마감 {q.deadline}</span>}
                           {q.xp && <span className="flex items-center gap-1 text-yellow-600"><Zap size={10} />{q.xp} XP</span>}
                         </div>
-                        <button onClick={() => { setShowQuestModal(false); setActiveQuest(q); }}
-                          className="flex items-center gap-1.5 text-xs bg-yellow-500 text-white rounded-lg px-3 py-1.5 hover:bg-yellow-600 transition-colors">
-                          <Play size={11} />시작하기
-                        </button>
+                        {q.completed ? (
+                          <button onClick={() => { setShowQuestModal(false); setActiveQuest(q); setQuestViewOnly(true); }}
+                            className="flex items-center gap-1.5 text-xs bg-gray-200 text-gray-600 rounded-lg px-3 py-1.5 hover:bg-gray-300 transition-colors">
+                            <BookOpen size={11} />결과 보기
+                          </button>
+                        ) : (
+                          <button onClick={() => { setShowQuestModal(false); setActiveQuest(q); setQuestViewOnly(false); }}
+                            className="flex items-center gap-1.5 text-xs bg-yellow-500 text-white rounded-lg px-3 py-1.5 hover:bg-yellow-600 transition-colors">
+                            <Play size={11} />시작하기
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -934,7 +997,9 @@ export function StudentWorkspace() {
         <QuestStartModal
           quest={activeQuest}
           courseId={courseId}
-          onClose={() => setActiveQuest(null)}
+          onClose={() => { setActiveQuest(null); setQuestViewOnly(false); }}
+          onComplete={handleQuestComplete}
+          viewOnly={questViewOnly}
         />
       )}
     </div>

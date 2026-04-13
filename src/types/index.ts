@@ -156,6 +156,7 @@ export interface AiDraftRequest {
   targetGroup: string;
   xp?: number;
   description?: string;
+  week?: string;
 }
 
 export interface AiDraftQuestion {

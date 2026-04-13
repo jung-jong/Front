@@ -2,6 +2,11 @@
 
 > **강사의 시간을 돌려주고, 학생의 성장을 가시화하는** AI 맞춤형 교육 보조 플랫폼
 
+[![Deployed on Vercel](https://img.shields.io/badge/Deployed-Vercel-black?logo=vercel)](https://vercel.com)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript)](https://www.typescriptlang.org)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind-v4-38BDF8?logo=tailwindcss)](https://tailwindcss.com)
+
 ---
 
 ## 우리가 해결하는 문제 (Pain Points)
@@ -225,12 +230,29 @@ npm run lint       # ESLint 검사
 ```
 AuthUser     → id, name, email, role (student | instructor)
 Course       → id, name, description, studentCount, authCode
-Quest        → id, title, scope, difficulty, questionCount, status, xp
+Quest        → id, title, scope, difficulty, questionCount, status, xp, completed
 ChatMessage  → id, role (ai | user), content, sources, quiz
-UploadedFile → id, name, week, topic, ragStatus (indexing | ready)
+UploadedFile → id, name, week, topic, ragStatus (indexing | ready), isPublished
+Notification → id, type (message | quest | quiz), title, content, from, time, read
 WeakPoint    → keyword, wrongCount, summary, material
 KpiData      → studentCount, weeklyQuestionCount, avgEngagementRate, gradeBreakdown
+AiDraftRequest → scope, difficulty, questionCount, optionCount, targetGroup, week
 ```
+
+---
+
+## 최근 변경 이력
+
+### v2.1 (2026-04-13)
+
+| 분류 | 내용 |
+|------|------|
+| **버그 수정** | 알림 읽음 처리 — API 실패 시 서버 상태 재조회로 안정적 복원 |
+| **버그 수정** | 임시 저장 버튼이 실제로 발송되던 버그 수정 (`SyntheticEvent → sendAfterSave` 오전달 문제) |
+| **기능 개선** | 완료한 퀘스트 재풀기 방지 — "완료" 뱃지 표시 및 "결과 보기" 전용 뷰 |
+| **기능 개선** | 퀘스트 완료 즉시 XP·통계(정답률, 완료 수) 좌측 패널에 실시간 반영 |
+| **신규 기능** | AI 초안 생성에서 주차(week) 선택 드롭다운 추가 — 선택한 주차 자료 기반으로 문항 생성 |
+| **문서** | 백엔드 이슈 및 API 요구사항 문서 추가 (`docs/backend-issues.md`) |
 
 ---
 
