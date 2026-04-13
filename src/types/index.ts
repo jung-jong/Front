@@ -207,6 +207,12 @@ export interface WeakPoint {
   lastWrong: string;
   summary: string;
   material: string;
+  sourceType?: string;
+  sourceId?: string;
+  question?: string;
+  selectedAnswer?: string;
+  correctAnswer?: string;
+  explanation?: string;
 }
 
 export interface AiProposal {

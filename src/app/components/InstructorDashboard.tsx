@@ -116,8 +116,11 @@ function CreateQuestModal({ courseId, onClose, onSave, initialData, draft }: Cre
   const [questionCount, setQuestionCount] = useState(
     initialData?.questionCount ?? draft?.questionCount ?? 3
   );
+  const normalizeTargetGroup = (v?: string) =>
+    v ? v.replace(/\s*\(\d+명\)/g, "").replace("B·C", "B,C").trim() : "전체 수강생";
+
   const [targetGroup, setTargetGroup] = useState(
-    initialData?.targetGroup ?? draft?.targetGroup ?? "전체 수강생 (50명)"
+    normalizeTargetGroup(initialData?.targetGroup ?? draft?.targetGroup)
   );
   const [deadline, setDeadline] = useState(initialData?.deadline ?? "");
   const [xp, setXp] = useState(initialData?.xp ?? draft?.xp ?? 100);
@@ -246,11 +249,11 @@ function CreateQuestModal({ courseId, onClose, onSave, initialData, draft }: Cre
   };
 
   const targetOptions = [
-    "전체 수강생 (50명)",
-    "A 등급 학생 (10명)",
-    "B 등급 학생 (20명)",
-    "C 등급 학생 (20명)",
-    "B·C 등급 학생 (40명)",
+    "전체 수강생",
+    "A 등급 학생",
+    "B 등급 학생",
+    "C 등급 학생",
+    "B,C 등급 학생",
   ];
 
   return (
@@ -460,7 +463,7 @@ function AiDraftModal({ courseId, onClose, onDraftReady }: AiDraftModalProps) {
   const [difficulty, setDifficulty] = useState<QuestDifficulty>("보통");
   const [questionCount, setQuestionCount] = useState(3);
   const [optionCount, setOptionCount] = useState(4);
-  const [targetGroup, setTargetGroup] = useState("전체 수강생 (50명)");
+  const [targetGroup, setTargetGroup] = useState("전체 수강생");
   const [xp, setXp] = useState(100);
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
@@ -485,11 +488,11 @@ function AiDraftModal({ courseId, onClose, onDraftReady }: AiDraftModalProps) {
   };
 
   const targetOptions = [
-    "전체 수강생 (50명)",
-    "A 등급 학생 (10명)",
-    "B 등급 학생 (20명)",
-    "C 등급 학생 (20명)",
-    "B·C 등급 학생 (40명)",
+    "전체 수강생",
+    "A 등급 학생",
+    "B 등급 학생",
+    "C 등급 학생",
+    "B,C 등급 학생",
   ];
 
   const handleGenerate = async () => {

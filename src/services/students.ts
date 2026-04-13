@@ -49,6 +49,7 @@ export async function getMyStats(courseId: string): Promise<{
   grade: string;
   xp: number;
   xpToNext: number;
+  totalXp: number;
 }> {
   return api.get(`/courses/${courseId}/me/stats`);
 }

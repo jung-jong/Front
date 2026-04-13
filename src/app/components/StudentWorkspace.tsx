@@ -363,7 +363,7 @@ export function StudentWorkspace() {
     }
   };
   const [weakPoints, setWeakPoints] = useState<WeakPoint[]>([]);
-  const [myStats, setMyStats] = useState<{ questionCount: number; quizAccuracy: number; completedQuests: number; totalQuests: number; grade: string; xp: number; xpToNext: number } | null>(null);
+  const [myStats, setMyStats] = useState<{ questionCount: number; quizAccuracy: number; completedQuests: number; totalQuests: number; grade: string; xp: number; xpToNext: number; totalXp: number } | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -638,19 +638,19 @@ export function StudentWorkspace() {
                       <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
                         <span>다음 등급까지</span>
                         <span className="text-[#37b1b1]" style={{ fontWeight: 600 }}>
-                          {myStats.xp} / {myStats.xpToNext} XP
+                          {myStats.xp} / {myStats.xp + myStats.xpToNext} XP
                         </span>
                       </div>
                       <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                         <div className="h-full bg-gradient-to-r from-[#37b1b1] to-[#1d6e6e] rounded-full transition-all duration-500"
-                          style={{ width: `${Math.min(100, Math.round(myStats.xp / myStats.xpToNext * 100))}%` }} />
+                          style={{ width: `${Math.min(100, Math.round(myStats.xp / (myStats.xp + myStats.xpToNext) * 100))}%` }} />
                       </div>
                     </>
                   ) : (
                     <>
                       <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
                         <span className="text-yellow-600" style={{ fontWeight: 600 }}>🏆 최고 등급 달성!</span>
-                        <span className="text-[#37b1b1]" style={{ fontWeight: 600 }}>{myStats.xp} XP</span>
+                        <span className="text-[#37b1b1]" style={{ fontWeight: 600 }}>{myStats.totalXp ?? myStats.xp} XP</span>
                       </div>
                       <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                         <div className="h-full bg-gradient-to-r from-yellow-400 to-yellow-500 rounded-full" style={{ width: "100%" }} />
@@ -855,11 +855,31 @@ export function StudentWorkspace() {
                       {expandedWeak === w.id ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
                     </button>
                     {expandedWeak === w.id && (
-                      <div className="px-3 pb-3 bg-gray-50 border-t border-gray-100">
-                        <p className="text-xs text-gray-600 mt-2 mb-2 leading-relaxed">{w.summary}</p>
-                        <a className="inline-flex items-center gap-1.5 text-xs text-[#37b1b1] hover:text-[#1d6e6e] cursor-pointer">
-                          <FileText size={11} />{w.material} 다시 보기
-                        </a>
+                      <div className="px-3 pb-3 bg-gray-50 border-t border-gray-100 space-y-2">
+                        {w.question ? (
+                          <>
+                            <p className="text-xs text-gray-500 mt-2" style={{ fontWeight: 600 }}>문항</p>
+                            <p className="text-xs text-gray-700 leading-relaxed">{w.question}</p>
+                            <div className="flex gap-2">
+                              <div className="flex-1 bg-red-50 border border-red-100 rounded-lg px-2 py-1.5">
+                                <p className="text-[10px] text-red-400 mb-0.5" style={{ fontWeight: 600 }}>내 답</p>
+                                <p className="text-xs text-red-700">{w.selectedAnswer ?? "-"}</p>
+                              </div>
+                              <div className="flex-1 bg-green-50 border border-green-100 rounded-lg px-2 py-1.5">
+                                <p className="text-[10px] text-green-500 mb-0.5" style={{ fontWeight: 600 }}>정답</p>
+                                <p className="text-xs text-green-700">{w.correctAnswer ?? "-"}</p>
+                              </div>
+                            </div>
+                            {w.explanation && (
+                              <div className="bg-[#f0fdfd] border border-[#b3e5e5] rounded-lg px-2 py-1.5">
+                                <p className="text-[10px] text-[#1d6e6e] mb-0.5" style={{ fontWeight: 600 }}>해설</p>
+                                <p className="text-xs text-gray-600 leading-relaxed">{w.explanation}</p>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <p className="text-xs text-gray-600 mt-2 leading-relaxed">{w.summary}</p>
+                        )}
                       </div>
                     )}
                   </div>
