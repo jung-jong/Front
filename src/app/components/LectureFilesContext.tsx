@@ -95,7 +95,8 @@ export function LectureFilesProvider({ children }: { children: React.ReactNode }
     const target = files.find((f) => f.id === fileId);
     if (!target) return;
     const updated = await filesService.togglePublish(courseId, fileId, !target.isPublished);
-    setFiles((prev) => prev.map((f) => (f.id === fileId ? updated : f)));
+    // 백엔드 응답에 week/topic 등 일부 필드가 빠질 수 있으므로 기존 데이터와 병합
+    setFiles((prev) => prev.map((f) => (f.id === fileId ? { ...f, ...updated } : f)));
   }, [files]);
 
   const deleteFile = useCallback(async (courseId: string, fileId: string) => {

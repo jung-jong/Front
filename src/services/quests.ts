@@ -1,5 +1,5 @@
 import { api } from "@/lib/api";
-import type { Quest, QuestContent, CreateQuestRequest } from "@/types";
+import type { Quest, QuestContent, CreateQuestRequest, AiDraftRequest, AiDraftResponse } from "@/types";
 
 export async function getQuests(courseId: string): Promise<Quest[]> {
   return api.get<Quest[]>(`/courses/${courseId}/quests`);
@@ -30,6 +30,13 @@ export async function sendQuest(courseId: string, questId: string): Promise<Ques
 
 export async function deleteQuest(courseId: string, questId: string): Promise<void> {
   return api.delete<void>(`/courses/${courseId}/quests/${questId}`);
+}
+
+export async function generateAiDraft(
+  courseId: string,
+  req: AiDraftRequest
+): Promise<AiDraftResponse> {
+  return api.post<AiDraftResponse>(`/courses/${courseId}/quests/ai-draft`, req);
 }
 
 export async function submitQuestAnswers(

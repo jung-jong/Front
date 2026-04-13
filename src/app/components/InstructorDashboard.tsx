@@ -56,6 +56,7 @@ import {
   updateQuest,
   sendQuest as apiSendQuest,
   deleteQuest as apiDeleteQuest,
+  generateAiDraft,
 } from "@/services/quests";
 import type {
   Quest,
@@ -64,6 +65,7 @@ import type {
   KeywordStat,
   UploadedFile,
   QuestDifficulty,
+  AiDraftRequest,
   ApiError,
 } from "@/types";
 
@@ -79,38 +81,136 @@ const weekOptions = ["4주차", "3주차", "2주차", "1주차"];
 
 // ─── Create Quest Modal ───────────────────────────────────────────────────────
 
+interface MCQuestion {
+  question: string;
+  options: string[];
+  answer: number;
+}
+
+interface DraftData {
+  scope?: string;
+  difficulty?: QuestDifficulty;
+  questionCount?: number;
+  optionCount?: number;
+  targetGroup?: string;
+  xp?: number;
+  description?: string;
+  questions?: MCQuestion[];
+}
+
 interface CreateQuestModalProps {
   courseId: string;
   onClose: () => void;
   onSave: (q: Quest) => void;
   initialData?: Quest;
+  draft?: DraftData;
 }
 
-function CreateQuestModal({ courseId, onClose, onSave, initialData }: CreateQuestModalProps) {
+const ALL_NUM_LABELS = ["①", "②", "③", "④", "⑤"];
+
+function CreateQuestModal({ courseId, onClose, onSave, initialData, draft }: CreateQuestModalProps) {
   const [title, setTitle] = useState(initialData?.title ?? "");
-  const [scope, setScope] = useState(initialData?.scope ?? "");
-  const [difficulty, setDifficulty] = useState<QuestDifficulty>(initialData?.difficulty ?? "보통");
-  const [questionCount, setQuestionCount] = useState(initialData?.questionCount ?? 3);
-  const [targetGroup, setTargetGroup] = useState(initialData?.targetGroup ?? "전체 수강생 (50명)");
+  const [scope, setScope] = useState(initialData?.scope ?? draft?.scope ?? "");
+  const [difficulty, setDifficulty] = useState<QuestDifficulty>(
+    initialData?.difficulty ?? draft?.difficulty ?? "보통"
+  );
+  const [questionCount, setQuestionCount] = useState(
+    initialData?.questionCount ?? draft?.questionCount ?? 3
+  );
+  const [targetGroup, setTargetGroup] = useState(
+    initialData?.targetGroup ?? draft?.targetGroup ?? "전체 수강생 (50명)"
+  );
   const [deadline, setDeadline] = useState(initialData?.deadline ?? "");
-  const [xp, setXp] = useState(initialData?.xp ?? 100);
-  const [description, setDescription] = useState(initialData?.previewContent ?? "");
+  const [xp, setXp] = useState(initialData?.xp ?? draft?.xp ?? 100);
+  const [description, setDescription] = useState(initialData?.previewContent ?? draft?.description ?? "");
+  const [questions, setQuestions] = useState<MCQuestion[]>(() => {
+    if (draft?.questions && draft.questions.length > 0) return draft.questions;
+    return Array.from({ length: initialData?.questionCount ?? draft?.questionCount ?? 3 }, () => ({
+      question: "",
+      options: Array(draft?.optionCount ?? 4).fill("") as string[],
+      answer: 0,
+    }));
+  });
+  const [optionCount, setOptionCount] = useState(draft?.optionCount ?? 4);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
   const isEdit = !!initialData;
 
-  const handleSave = async () => {
+  // 문항 수 / 보기 수 변경 시 배열 동기화
+  useEffect(() => {
+    setQuestions((prev) => {
+      const resized = prev.map((q) => {
+        const opts = [...q.options];
+        while (opts.length < optionCount) opts.push("");
+        return {
+          ...q,
+          options: opts.slice(0, optionCount),
+          answer: Math.min(q.answer, optionCount - 1),
+        };
+      });
+      if (questionCount > resized.length) {
+        return [
+          ...resized,
+          ...Array.from({ length: questionCount - resized.length }, () => ({
+            question: "",
+            options: Array(optionCount).fill("") as string[],
+            answer: 0,
+          })),
+        ];
+      }
+      return resized.slice(0, questionCount);
+    });
+  }, [questionCount, optionCount]);
+
+  const updateQuestion = (idx: number, value: string) =>
+    setQuestions((prev) => prev.map((q, i) => i === idx ? { ...q, question: value } : q));
+
+  const updateOption = (qIdx: number, optIdx: number, value: string) =>
+    setQuestions((prev) =>
+      prev.map((q, i) => {
+        if (i !== qIdx) return q;
+        const opts = [...q.options];
+        opts[optIdx] = value;
+        return { ...q, options: opts };
+      })
+    );
+
+  const setAnswer = (qIdx: number, answerIdx: number) =>
+    setQuestions((prev) => prev.map((q, i) => i === qIdx ? { ...q, answer: answerIdx } : q));
+
+  const handleSave = async (sendAfterSave = false) => {
     if (!title.trim()) { setError("퀘스트 제목을 입력해주세요."); return; }
     if (!scope.trim()) { setError("학습 범위를 입력해주세요."); return; }
     setSaving(true);
     try {
-      const req = { title, scope, difficulty, questionCount, targetGroup, deadline: deadline || undefined, xp, description: description || undefined };
+      const req = {
+        title, scope, difficulty, questionCount, targetGroup,
+        deadline: deadline || undefined, xp,
+        description: description || undefined,
+        questions: questions.map((q) => ({
+          type: "multiple" as const,
+          question: q.question,
+          options: [...q.options],
+          answer: q.answer,
+        })),
+      };
       let saved: Quest;
       if (isEdit && initialData) {
         saved = await updateQuest(courseId, initialData.id, req);
       } else {
         saved = await createQuest(courseId, req);
+      }
+      if (sendAfterSave && !isEdit) {
+        try {
+          saved = await apiSendQuest(courseId, saved.id);
+        } catch (sendErr) {
+          const apiErr = sendErr as ApiError;
+          setError(apiErr.message ?? "발송에 실패했습니다. 퀘스트는 임시 저장되었습니다.");
+          onSave(saved);
+          setSaving(false);
+          return;
+        }
       }
       onSave(saved);
       onClose();
@@ -142,6 +242,7 @@ function CreateQuestModal({ courseId, onClose, onSave, initialData }: CreateQues
         </div>
 
         <div className="overflow-y-auto flex-1 p-5 space-y-4">
+          {/* 기본 정보 */}
           <div>
             <label className="block text-sm text-gray-600 mb-1.5" style={{ fontWeight: 500 }}>퀘스트 제목 *</label>
             <input type="text" value={title} onChange={(e) => setTitle(e.target.value)}
@@ -156,24 +257,37 @@ function CreateQuestModal({ courseId, onClose, onSave, initialData }: CreateQues
               className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-700 outline-none focus:border-[#37b1b1] focus:ring-1 focus:ring-[#37b1b1]/30 transition-all placeholder:text-gray-300" />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm text-gray-600 mb-1.5" style={{ fontWeight: 500 }}>난이도</label>
-              <div className="flex gap-1.5">
-                {(["쉬움", "보통", "어려움"] as const).map((d) => (
-                  <button key={d} type="button" onClick={() => setDifficulty(d)}
-                    className={`flex-1 py-2 rounded-lg text-xs transition-colors ${difficulty === d ? difficultyColor[d] + " ring-1 ring-current" : "bg-gray-50 text-gray-400 hover:bg-gray-100"}`}
-                    style={{ fontWeight: difficulty === d ? 600 : 400 }}>{d}</button>
-                ))}
-              </div>
+          <div>
+            <label className="block text-sm text-gray-600 mb-1.5" style={{ fontWeight: 500 }}>난이도</label>
+            <div className="flex gap-1.5">
+              {(["쉬움", "보통", "어려움"] as const).map((d) => (
+                <button key={d} type="button" onClick={() => setDifficulty(d)}
+                  className={`flex-1 py-2 rounded-lg text-xs transition-colors ${difficulty === d ? difficultyColor[d] + " ring-1 ring-current" : "bg-gray-50 text-gray-400 hover:bg-gray-100"}`}
+                  style={{ fontWeight: difficulty === d ? 600 : 400 }}>{d}</button>
+              ))}
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm text-gray-600 mb-1.5" style={{ fontWeight: 500 }}>문항 수</label>
               <div className="flex items-center gap-2">
-                <button onClick={() => setQuestionCount((v) => Math.max(1, v - 1))}
+                <button type="button" onClick={() => setQuestionCount((v) => Math.max(1, v - 1))}
                   className="w-8 h-8 rounded-lg bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 text-lg flex items-center justify-center leading-none">−</button>
                 <span className="flex-1 text-center text-sm text-gray-800" style={{ fontWeight: 600 }}>{questionCount}문항</span>
-                <button onClick={() => setQuestionCount((v) => Math.min(20, v + 1))}
+                <button type="button" onClick={() => setQuestionCount((v) => Math.min(10, v + 1))}
+                  className="w-8 h-8 rounded-lg bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 text-lg flex items-center justify-center leading-none">+</button>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-600 mb-1.5" style={{ fontWeight: 500 }}>
+                보기 수 <span className="text-gray-300" style={{ fontWeight: 400 }}>(문항당 2~5개)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => setOptionCount((v) => Math.max(2, v - 1))}
+                  className="w-8 h-8 rounded-lg bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 text-lg flex items-center justify-center leading-none">−</button>
+                <span className="flex-1 text-center text-sm text-gray-800" style={{ fontWeight: 600 }}>{optionCount}개</span>
+                <button type="button" onClick={() => setOptionCount((v) => Math.min(5, v + 1))}
                   className="w-8 h-8 rounded-lg bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 text-lg flex items-center justify-center leading-none">+</button>
               </div>
             </div>
@@ -211,10 +325,67 @@ function CreateQuestModal({ courseId, onClose, onSave, initialData }: CreateQues
           </div>
 
           <div>
-            <label className="block text-sm text-gray-600 mb-1.5" style={{ fontWeight: 500 }}>퀘스트 설명 / 문항 내용</label>
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4}
-              placeholder="퀘스트 내용, 문항, 지시사항을 자유롭게 작성하세요."
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-700 resize-none outline-none focus:border-[#37b1b1] focus:ring-1 focus:ring-[#37b1b1]/30 transition-all placeholder:text-gray-300 leading-relaxed" />
+            <label className="block text-sm text-gray-600 mb-1.5" style={{ fontWeight: 500 }}>
+              퀘스트 안내 문구 <span className="text-gray-300" style={{ fontWeight: 400 }}>(선택)</span>
+            </label>
+            <input type="text" value={description} onChange={(e) => setDescription(e.target.value)}
+              placeholder="예: 이번 주 강의 핵심 개념을 확인하는 퀘스트입니다."
+              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-700 outline-none focus:border-[#37b1b1] focus:ring-1 focus:ring-[#37b1b1]/30 transition-all placeholder:text-gray-300" />
+          </div>
+
+          {/* 문항 편집 */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <label className="text-sm text-gray-600" style={{ fontWeight: 600 }}>문항 편집</label>
+              <span className="text-xs bg-[#e0f7f7] text-[#1d6e6e] rounded-full px-2 py-0.5">객관식 4지선다</span>
+              <span className="text-xs text-gray-400">번호를 클릭하면 정답으로 설정됩니다.</span>
+            </div>
+            <div className="space-y-4">
+              {questions.map((q, idx) => (
+                <div key={idx} className="border border-gray-200 rounded-xl p-4 space-y-3 bg-gray-50/50">
+                  <p className="text-xs text-[#1d6e6e]" style={{ fontWeight: 700 }}>문항 {idx + 1}</p>
+                  <input
+                    type="text"
+                    value={q.question}
+                    onChange={(e) => updateQuestion(idx, e.target.value)}
+                    placeholder={`문항 ${idx + 1} 질문을 입력하세요`}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-[#37b1b1] focus:ring-1 focus:ring-[#37b1b1]/20 bg-white placeholder:text-gray-300"
+                  />
+                  <div className="space-y-2">
+                    {q.options.map((opt, oi) => (
+                      <div key={oi} className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setAnswer(idx, oi)}
+                          title="클릭하여 정답으로 설정"
+                          className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs flex-shrink-0 transition-colors ${
+                            q.answer === oi
+                              ? "border-[#37b1b1] bg-[#37b1b1] text-white"
+                              : "border-gray-300 text-gray-500 hover:border-[#37b1b1]/60"
+                          }`}
+                        >
+                          {ALL_NUM_LABELS[oi]}
+                        </button>
+                        <input
+                          type="text"
+                          value={opt}
+                          onChange={(e) => updateOption(idx, oi, e.target.value)}
+                          placeholder={`보기 ${oi + 1}`}
+                          className={`flex-1 border rounded-lg px-3 py-2 text-sm text-gray-700 outline-none focus:ring-1 bg-white placeholder:text-gray-300 transition-colors ${
+                            q.answer === oi
+                              ? "border-[#37b1b1] focus:border-[#37b1b1] focus:ring-[#37b1b1]/20 bg-[#f0fdfd]"
+                              : "border-gray-200 focus:border-[#37b1b1] focus:ring-[#37b1b1]/20"
+                          }`}
+                        />
+                        {q.answer === oi && (
+                          <span className="text-[10px] text-[#37b1b1] flex-shrink-0" style={{ fontWeight: 600 }}>정답</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
           {error && (
@@ -233,13 +404,186 @@ function CreateQuestModal({ courseId, onClose, onSave, initialData }: CreateQues
               <Save size={14} />{isEdit ? (saving ? "저장 중..." : "저장") : (saving ? "저장 중..." : "임시 저장")}
             </button>
             {!isEdit && (
-              <button onClick={handleSave} disabled={saving}
+              <button onClick={() => handleSave(true)} disabled={saving}
                 className="flex items-center gap-2 bg-[#37b1b1] hover:bg-[#2a9090] disabled:opacity-60 text-white rounded-xl px-4 py-2 text-sm transition-colors"
                 style={{ fontWeight: 600 }}>
                 <Send size={14} />{saving ? "발송 중..." : "바로 발송"}
               </button>
             )}
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── AI Draft Modal ───────────────────────────────────────────────────────────
+
+interface AiDraftModalProps {
+  courseId: string;
+  onClose: () => void;
+  onDraftReady: (draft: DraftData) => void;
+}
+
+function AiDraftModal({ courseId, onClose, onDraftReady }: AiDraftModalProps) {
+  const [scope, setScope] = useState("");
+  const [difficulty, setDifficulty] = useState<QuestDifficulty>("보통");
+  const [questionCount, setQuestionCount] = useState(3);
+  const [optionCount, setOptionCount] = useState(4);
+  const [targetGroup, setTargetGroup] = useState("전체 수강생 (50명)");
+  const [xp, setXp] = useState(100);
+  const [description, setDescription] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const targetOptions = [
+    "전체 수강생 (50명)",
+    "A 등급 학생 (10명)",
+    "B 등급 학생 (20명)",
+    "C 등급 학생 (20명)",
+    "B·C 등급 학생 (40명)",
+  ];
+
+  const handleGenerate = async () => {
+    if (!scope.trim()) { setError("학습 범위를 입력해주세요."); return; }
+    setLoading(true);
+    setError("");
+    try {
+      const req: AiDraftRequest = {
+        scope, difficulty, questionCount, optionCount, targetGroup,
+        xp, description: description || undefined,
+      };
+      const res = await generateAiDraft(courseId, req);
+      const mcQuestions: MCQuestion[] = res.questions.map((q) => ({
+        question: q.question,
+        options: q.options,
+        answer: q.answer,
+      }));
+      onDraftReady({
+        scope, difficulty, questionCount, optionCount,
+        targetGroup, xp, description, questions: mcQuestions,
+      });
+    } catch (err) {
+      const apiErr = err as ApiError;
+      setError(apiErr.message ?? "AI 초안 생성에 실패했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between p-5 border-b border-gray-100 flex-shrink-0">
+          <div>
+            <div className="flex items-center gap-2 mb-0.5">
+              <h2 className="text-gray-900" style={{ fontWeight: 700 }}>AI 초안 생성</h2>
+              <span className="text-xs bg-[#e0f7f7] text-[#1d6e6e] rounded-full px-2 py-0.5 flex items-center gap-1" style={{ fontWeight: 500 }}>
+                <Sparkles size={10} />AI
+              </span>
+            </div>
+            <p className="text-sm text-gray-400">조건을 설정하면 AI가 문항 초안을 생성합니다.</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X size={20} /></button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-5 space-y-4">
+          <div>
+            <label className="block text-sm text-gray-600 mb-1.5" style={{ fontWeight: 500 }}>학습 범위 *</label>
+            <input type="text" value={scope} onChange={(e) => setScope(e.target.value)}
+              placeholder="예: 8주차 인터페이스와 추상 클래스"
+              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-700 outline-none focus:border-[#37b1b1] focus:ring-1 focus:ring-[#37b1b1]/30 transition-all placeholder:text-gray-300" />
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-600 mb-1.5" style={{ fontWeight: 500 }}>난이도</label>
+            <div className="flex gap-1.5">
+              {(["쉬움", "보통", "어려움"] as const).map((d) => (
+                <button key={d} type="button" onClick={() => setDifficulty(d)}
+                  className={`flex-1 py-2 rounded-lg text-xs transition-colors ${difficulty === d ? difficultyColor[d] + " ring-1 ring-current" : "bg-gray-50 text-gray-400 hover:bg-gray-100"}`}
+                  style={{ fontWeight: difficulty === d ? 600 : 400 }}>{d}</button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm text-gray-600 mb-1.5" style={{ fontWeight: 500 }}>문항 수</label>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => setQuestionCount((v) => Math.max(1, v - 1))}
+                  className="w-8 h-8 rounded-lg bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 text-lg flex items-center justify-center leading-none">−</button>
+                <span className="flex-1 text-center text-sm text-gray-800" style={{ fontWeight: 600 }}>{questionCount}문항</span>
+                <button type="button" onClick={() => setQuestionCount((v) => Math.min(10, v + 1))}
+                  className="w-8 h-8 rounded-lg bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 text-lg flex items-center justify-center leading-none">+</button>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-600 mb-1.5" style={{ fontWeight: 500 }}>
+                보기 수 <span className="text-gray-300" style={{ fontWeight: 400 }}>(2~5개)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => setOptionCount((v) => Math.max(2, v - 1))}
+                  className="w-8 h-8 rounded-lg bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 text-lg flex items-center justify-center leading-none">−</button>
+                <span className="flex-1 text-center text-sm text-gray-800" style={{ fontWeight: 600 }}>{optionCount}개</span>
+                <button type="button" onClick={() => setOptionCount((v) => Math.min(5, v + 1))}
+                  className="w-8 h-8 rounded-lg bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 text-lg flex items-center justify-center leading-none">+</button>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-600 mb-1.5" style={{ fontWeight: 500 }}>대상 학생 그룹</label>
+            <div className="relative">
+              <select value={targetGroup} onChange={(e) => setTargetGroup(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 pr-8 text-sm text-gray-700 outline-none focus:border-[#37b1b1] appearance-none bg-white cursor-pointer">
+                {targetOptions.map((o) => <option key={o}>{o}</option>)}
+              </select>
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm text-gray-600 mb-1.5" style={{ fontWeight: 500 }}>
+                <span className="flex items-center gap-1"><Zap size={12} />XP 보상</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <input type="number" value={xp} onChange={(e) => setXp(Number(e.target.value))} min={10} max={500} step={10}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-[#37b1b1] focus:ring-1 focus:ring-[#37b1b1]/30 transition-all" />
+                <span className="text-xs text-gray-400 flex-shrink-0">XP</span>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-600 mb-1.5" style={{ fontWeight: 500 }}>
+                <span className="flex items-center gap-1"><Target size={12} />퀘스트 안내</span>
+              </label>
+              <input type="text" value={description} onChange={(e) => setDescription(e.target.value)}
+                placeholder="예: 이번 주 핵심 개념 위주"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-[#37b1b1] focus:ring-1 focus:ring-[#37b1b1]/30 transition-all placeholder:text-gray-300" />
+            </div>
+          </div>
+
+          {error && (
+            <div className="bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+              <p className="text-xs text-red-600">{error}</p>
+            </div>
+          )}
+
+          <div className="bg-[#f0fdfd] border border-[#b3e5e5] rounded-xl px-4 py-3">
+            <p className="text-xs text-[#1d6e6e] leading-relaxed">
+              AI가 업로드된 강의 자료를 분석해 조건에 맞는 문항 초안을 생성합니다. 생성 후 직접 수정·검토한 뒤 발송할 수 있습니다.
+            </p>
+          </div>
+        </div>
+
+        <div className="p-4 border-t border-gray-100 flex-shrink-0 flex items-center justify-between">
+          <button onClick={onClose} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">취소</button>
+          <button onClick={handleGenerate} disabled={loading}
+            className="flex items-center gap-2 bg-[#37b1b1] hover:bg-[#2a9090] disabled:opacity-60 text-white rounded-xl px-5 py-2 text-sm transition-colors"
+            style={{ fontWeight: 600 }}>
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+            {loading ? "생성 중..." : "AI 초안 생성"}
+          </button>
         </div>
       </div>
     </div>
@@ -253,7 +597,6 @@ export function InstructorDashboard() {
   const [searchParams] = useSearchParams();
   const { user, logout } = useAuth();
 
-  const isNewCourse = searchParams.get("new") === "true";
   const courseName = searchParams.get("name") ? decodeURIComponent(searchParams.get("name")!) : "강의";
   const courseId = searchParams.get("courseId") ?? "";
 
@@ -278,6 +621,8 @@ export function InstructorDashboard() {
   const [expandedQuest, setExpandedQuest] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingQuest, setEditingQuest] = useState<Quest | null>(null);
+  const [showAiDraftModal, setShowAiDraftModal] = useState(false);
+  const [questDraft, setQuestDraft] = useState<DraftData | null>(null);
 
   // 분석 탭
   const [kpi, setKpi] = useState<KpiData | null>(null);
@@ -375,6 +720,12 @@ export function InstructorDashboard() {
       setQuests((prev) => prev.filter((q) => q.id !== id));
       if (expandedQuest === id) setExpandedQuest(null);
     } catch { /* no-op */ }
+  };
+
+  const handleDraftReady = (draft: DraftData) => {
+    setQuestDraft(draft);
+    setShowAiDraftModal(false);
+    setShowCreateModal(true);
   };
 
   // KPI 카드 데이터 (API 응답 또는 로딩 중 placeholder)
@@ -564,11 +915,11 @@ export function InstructorDashboard() {
                               <div className="flex items-center gap-2.5 flex-shrink-0">
                                 <div className="flex items-center gap-1.5">
                                   <button
-                                    onClick={() => !needsSetup && handleTogglePublish(f.id)}
-                                    title={needsSetup ? "주차·주제를 먼저 설정하세요" : f.isPublished ? "공개 중 — 클릭하여 비공개" : "비공개 — 클릭하여 학생 공개"}
-                                    className={`relative w-9 h-5 rounded-full transition-colors ${needsSetup ? "opacity-40 cursor-not-allowed bg-gray-200" : f.isPublished ? "bg-[#37b1b1] cursor-pointer" : "bg-gray-200 cursor-pointer"}`}
+                                    onClick={() => { if (f.isPublished || !needsSetup) handleTogglePublish(f.id); }}
+                                    title={!f.isPublished && needsSetup ? "주차·주제를 먼저 설정하세요" : f.isPublished ? "공개 중 — 클릭하여 비공개" : "비공개 — 클릭하여 학생 공개"}
+                                    className={`relative w-9 h-5 rounded-full transition-colors ${!f.isPublished && needsSetup ? "opacity-40 cursor-not-allowed bg-gray-200" : f.isPublished ? "bg-[#37b1b1] cursor-pointer" : "bg-gray-200 cursor-pointer"}`}
                                   >
-                                    <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${f.isPublished && !needsSetup ? "left-4" : "left-0.5"}`} />
+                                    <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${f.isPublished ? "left-4" : "left-0.5"}`} />
                                   </button>
                                   <span className="text-[10px] text-gray-400 w-8">{f.isPublished && !needsSetup ? "공개" : "비공개"}</span>
                                 </div>
@@ -653,11 +1004,18 @@ export function InstructorDashboard() {
                     <h2 className="text-gray-800" style={{ fontWeight: 600 }}>퀘스트 생성 및 보내기</h2>
                     <p className="text-sm text-gray-400 mt-0.5">AI가 강의 자료를 분석해 생성한 퀘스트 초안입니다. 검토 후 발송하세요.</p>
                   </div>
-                  <button onClick={() => setShowCreateModal(true)}
-                    className="flex items-center gap-1.5 text-sm bg-[#37b1b1] text-white hover:bg-[#2a9090] rounded-lg px-4 py-2 transition-colors"
-                    style={{ fontWeight: 600 }}>
-                    <Plus size={15} />직접 생성
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setShowAiDraftModal(true)}
+                      className="flex items-center gap-1.5 text-sm bg-[#e0f7f7] text-[#1d6e6e] hover:bg-[#c8f0f0] rounded-lg px-4 py-2 transition-colors border border-[#b3e5e5]"
+                      style={{ fontWeight: 600 }}>
+                      <Sparkles size={15} />AI 초안 생성
+                    </button>
+                    <button onClick={() => setShowCreateModal(true)}
+                      className="flex items-center gap-1.5 text-sm bg-[#37b1b1] text-white hover:bg-[#2a9090] rounded-lg px-4 py-2 transition-colors"
+                      style={{ fontWeight: 600 }}>
+                      <Plus size={15} />직접 생성
+                    </button>
+                  </div>
                 </div>
                 <div className="p-6 space-y-3">
                   {questsLoading && (
@@ -666,7 +1024,7 @@ export function InstructorDashboard() {
                       <span className="text-sm">퀘스트 불러오는 중...</span>
                     </div>
                   )}
-                  {!questsLoading && isNewCourse && quests.filter(q => q.source === "ai").length === 0 && (
+                  {!questsLoading && quests.filter(q => q.source === "ai").length === 0 && (
                     <div className="border-2 border-dashed border-gray-200 rounded-xl p-4 opacity-60 select-none">
                       <div className="flex items-start gap-3">
                         <div className="flex-1">
@@ -886,7 +1244,7 @@ export function InstructorDashboard() {
                       </div>
                     </div>
                     <div className="p-6 space-y-4">
-                      {isNewCourse && proposals.length === 0 && (
+                      {!analyticsLoading && proposals.length === 0 && (
                         <div className="border-2 border-dashed border-gray-200 rounded-xl p-5 opacity-55 select-none">
                           <div className="flex items-start gap-3">
                             <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0">
@@ -938,13 +1296,23 @@ export function InstructorDashboard() {
         </div>
       </div>
 
+      {/* AI Draft Modal */}
+      {showAiDraftModal && (
+        <AiDraftModal
+          courseId={courseId}
+          onClose={() => setShowAiDraftModal(false)}
+          onDraftReady={handleDraftReady}
+        />
+      )}
+
       {/* Create / Edit Quest Modal */}
       {showCreateModal && (
         <CreateQuestModal
           courseId={courseId}
-          onClose={() => { setShowCreateModal(false); setEditingQuest(null); }}
+          onClose={() => { setShowCreateModal(false); setEditingQuest(null); setQuestDraft(null); }}
           onSave={handleAddQuest}
           initialData={editingQuest ?? undefined}
+          draft={questDraft ?? undefined}
         />
       )}
     </div>

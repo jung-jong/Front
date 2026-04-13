@@ -378,12 +378,12 @@ export function StudentWorkspace() {
   // ─── 강의 자료 주차별 그룹핑 ─────────────────────────────────────────────────
 
   const lectureMaterials = useMemo(() => {
-    const grouped: Record<string, { week: string; title: string; publishedAt: string; items: { label: string; pages: string }[] }> = {};
+    const grouped: Record<string, { week: string; title: string; publishedAt: string; items: { label: string; pages: string; url?: string }[] }> = {};
     publishedFiles.forEach((f) => {
       if (!grouped[f.week]) {
         grouped[f.week] = { week: f.week, title: f.topic, publishedAt: f.uploadedAt, items: [] };
       }
-      grouped[f.week].items.push({ label: f.name.replace(".pdf", ""), pages: f.size });
+      grouped[f.week].items.push({ label: f.name.replace(".pdf", ""), pages: f.size, url: f.url });
     });
     return Object.values(grouped).sort((a, b) => {
       const na = parseInt(a.week) || 0;
@@ -825,7 +825,12 @@ export function StudentWorkspace() {
                                 <p className="text-xs text-gray-400">{item.pages}</p>
                               </div>
                             </div>
-                            <button className="text-gray-400 hover:text-[#37b1b1] transition-colors">
+                            <button
+                              onClick={() => item.url && window.open(item.url, "_blank", "noopener,noreferrer")}
+                              disabled={!item.url}
+                              className="text-gray-400 hover:text-[#37b1b1] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                              title={item.url ? "파일 열기" : "링크 없음"}
+                            >
                               <ExternalLink size={13} />
                             </button>
                           </div>

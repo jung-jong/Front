@@ -62,6 +62,7 @@ export interface UploadedFile {
   topic: string;
   isPublished: boolean;
   ragStatus: "indexing" | "ready";
+  url?: string;
 }
 
 export interface UpdateFileMetaRequest {
@@ -139,6 +140,33 @@ export interface CreateQuestRequest {
   deadline?: string;
   xp?: number;
   description?: string;
+  questions?: {
+    type: "multiple";
+    question: string;
+    options: string[];
+    answer: number;
+  }[];
+}
+
+export interface AiDraftRequest {
+  scope: string;
+  difficulty: QuestDifficulty;
+  questionCount: number;
+  optionCount: number;
+  targetGroup: string;
+  xp?: number;
+  description?: string;
+}
+
+export interface AiDraftQuestion {
+  type: "multiple";
+  question: string;
+  options: string[];
+  answer: number;
+}
+
+export interface AiDraftResponse {
+  questions: AiDraftQuestion[];
 }
 
 // ─── Notification ─────────────────────────────────────────────────────────────

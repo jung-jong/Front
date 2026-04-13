@@ -43,10 +43,8 @@ export function CodeEntryPage() {
     enterCourse(codeInput.trim());
   };
 
-  const handleQuickJoin = (code: string) => {
-    setCodeInput(code);
-    setError("");
-    enterCourse(code);
+  const handleQuickJoin = (courseId: string) => {
+    navigate(`/student?courseId=${courseId}`);
   };
 
   return (
@@ -128,7 +126,7 @@ export function CodeEntryPage() {
             {courses.map((course) => (
               <button
                 key={course.id}
-                onClick={() => handleQuickJoin(course.authCode)}
+                onClick={() => handleQuickJoin(course.id)}
                 disabled={loading}
                 className="w-full flex items-center gap-3 p-3.5 border border-gray-100 rounded-xl hover:border-[#37b1b1]/40 hover:bg-[#f0fdfd] transition-all text-left group"
               >
