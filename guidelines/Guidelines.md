@@ -1,5 +1,7 @@
 # Custom-TA v2 Guidelines (for AI + Humans)
 
+> 최종 확정: 2026-04-13 (v2.3)
+
 This document is the single source of truth for UI/UX + implementation conventions in **Custom-TA v2**.
 
 Keep it short and strict. Prefer **clear defaults + explicit exceptions**.
@@ -96,10 +98,17 @@ Use cards for grouped content. Every card must have:
 
 ### Domain models (minimum vocabulary)
 
-- **Student**
-- **Course**
-- **Quest**
-- **ChatMessage**
+- **AuthUser** — id, name, email, role
+- **Course** — id, name, description, studentCount, authCode, hasData
+- **Quest** — id, title, scope, difficulty, questionCount, status, xp, completed
+- **QuestQuestion** — id, type (ox | multiple | short), question, options?, answer?
+- **ChatMessage** — id, role (ai | user), content, sources?, quiz?, isSummary?
+- **UploadedFile** — id, name, week, topic, isPublished, ragStatus
+- **Notification** — id, type, title, content, from, time, read
+- **WeakPoint** — id, keyword, wrongCount, lastWrong, summary, material
+- **AiProposal** — id, title, targetGroup, evidence, content
+- **AiConfig** — guidePrompt
+- **KpiData** — studentCount, weeklyQuestionCount, avgEngagementRate, gradeBreakdown
 
 ## UX guidelines
 
@@ -134,6 +143,17 @@ Use cards for grouped content. Every card must have:
 - Do not ignore responsiveness.
 - Do not skip loading / empty / error states.
 - Do not hardcode arbitrary spacing; use the spacing scale/tokens.
+
+## localStorage conventions
+
+프론트엔드가 임시로 사용하는 localStorage 키 목록:
+
+| Key | 내용 |
+|-----|------|
+| `cta_token` | Bearer 인증 토큰 |
+| `cta_completed_quests_{courseId}` | 완료 퀘스트 ID 배열 (백엔드 `completed` 미지원 환경 호환용) |
+
+백엔드가 `completed` 필드를 정상 반환하면 localStorage 데이터와 병합하여 표시.
 
 ## Exceptions
 

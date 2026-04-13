@@ -228,20 +228,39 @@ npm run lint       # ESLint 검사
 ## 주요 도메인 모델
 
 ```
-AuthUser     → id, name, email, role (student | instructor)
-Course       → id, name, description, studentCount, authCode
-Quest        → id, title, scope, difficulty, questionCount, status, xp, completed
-ChatMessage  → id, role (ai | user), content, sources, quiz
-UploadedFile → id, name, week, topic, ragStatus (indexing | ready), isPublished
-Notification → id, type (message | quest | quiz), title, content, from, time, read
-WeakPoint    → keyword, wrongCount, summary, material
-KpiData      → studentCount, weeklyQuestionCount, avgEngagementRate, gradeBreakdown
-AiDraftRequest → scope, difficulty, questionCount, optionCount, targetGroup, week
+AuthUser      → id, name, email, role (student | instructor)
+Course        → id, name, description, studentCount, authCode, createdAt, hasData,
+                 instructorName?, semester?
+Quest         → id, title, scope, difficulty, questionCount, targetGroup, status,
+                 source (ai | manual), xp?, deadline?, completed?
+QuestQuestion → id, type (ox | multiple | short), question, options?, answer?, hint?
+ChatMessage   → id, role (ai | user), content, sources?, quiz?, isSummary?
+UploadedFile  → id, name, size, uploadedAt, week, topic, isPublished,
+                 ragStatus (indexing | ready), url?
+Notification  → id, type (message | quest | quiz), title, content, from, time, read
+WeakPoint     → id, keyword, wrongCount, lastWrong, summary, material,
+                 sourceType?, sourceId?, question?, selectedAnswer?,
+                 correctAnswer?, explanation?
+KpiData       → studentCount, weeklyQuestionCount, weeklyQuestionDelta,
+                 avgEngagementRate, avgQuestAnswerRate, gradeBreakdown
+KeywordStat   → keyword, count
+AiProposal    → id, title, targetGroup, evidence, content
+AiConfig      → guidePrompt
+AiDraftRequest → scope, difficulty, questionCount, optionCount, targetGroup, xp?, week?
 ```
 
 ---
 
 ## 최근 변경 이력
+
+### v2.3 — 최종 릴리스 (2026-04-13)
+
+| 분류 | 내용 |
+|------|------|
+| **문서** | 전체 문서 최종 정비 — README, Guidelines, backend-issues 일괄 갱신 |
+| **문서** | 도메인 모델 (`WeakPoint`, `AiConfig`, `AiProposal`) 실제 타입 기준으로 정확히 반영 |
+| **문서** | API 엔드포인트 전체 목록에 `POST /quiz/submit`, AI Config, Students 엔드포인트 추가 |
+| **설정** | Vercel SPA 리라이트 설정 확인 완료 |
 
 ### v2.2 (2026-04-13)
 

@@ -1,7 +1,7 @@
 # Custom-TA 백엔드 이슈 및 API 요구사항 문서
 
 작성일: 2026-04-13  
-최종 수정: 2026-04-13 (v2.2 프론트엔드 패치 반영)  
+최종 수정: 2026-04-13 (v2.3 최종 릴리스 기준)  
 대상: 백엔드 개발팀  
 버전: v2
 
@@ -287,23 +287,80 @@ AI 초안 생성 시 학습 범위를 텍스트로만 입력하여 AI가 어느 
 
 ## API 엔드포인트 전체 목록 (프론트엔드 기준)
 
+### 인증
+
+| Method | Path | 설명 |
+|--------|------|------|
+| POST | `/auth/login` | 로그인 (role 포함) |
+| POST | `/auth/signup` | 회원가입 |
+| GET | `/auth/me` | 현재 사용자 정보 조회 |
+
+### 강의 (Course)
+
+| Method | Path | 설명 |
+|--------|------|------|
+| GET | `/courses` | 내 강의 목록 조회 |
+| POST | `/courses` | 강의 생성 (강사) |
+| POST | `/courses/join` | 수강 코드로 강의 참가 (학생) |
+
+### 파일 업로드
+
+| Method | Path | 설명 |
+|--------|------|------|
+| GET | `/courses/{courseId}/files` | 업로드된 강의 자료 목록 |
+| POST | `/courses/{courseId}/files` | 파일 업로드 (multipart/form-data) |
+| PUT | `/courses/{courseId}/files/{id}` | 파일 메타데이터 수정 (week, topic) |
+| PATCH | `/courses/{courseId}/files/{id}/publish` | 파일 공개/비공개 전환 |
+| DELETE | `/courses/{courseId}/files/{id}` | 파일 삭제 |
+
+### 채팅
+
+| Method | Path | 설명 |
+|--------|------|------|
+| GET | `/courses/{courseId}/chat/history` | 채팅 이력 조회 |
+| POST | `/courses/{courseId}/chat` | AI에게 질문 전송 |
+| POST | `/courses/{courseId}/quiz/submit` | 채팅 O/X 퀴즈 정답 전송 **(신규 필요)** |
+
+### 알림
+
 | Method | Path | 설명 |
 |--------|------|------|
 | GET | `/courses/{courseId}/notifications` | 알림 목록 조회 (학생용) |
 | PATCH | `/courses/{courseId}/notifications/{id}/read` | 알림 읽음 처리 |
 | PATCH | `/courses/{courseId}/notifications/read-all` | 전체 알림 읽음 처리 |
-| GET | `/courses/{courseId}/quests` | 퀘스트 목록 (completed 필드 포함) |
+
+### 퀘스트
+
+| Method | Path | 설명 |
+|--------|------|------|
+| GET | `/courses/{courseId}/quests` | 퀘스트 목록 (`completed` 필드 포함) |
 | GET | `/courses/{courseId}/quests/{id}/content` | 퀘스트 문항 조회 |
 | POST | `/courses/{courseId}/quests/{id}/submit` | 퀘스트 제출 |
 | POST | `/courses/{courseId}/quests` | 퀘스트 임시 생성 |
 | PUT | `/courses/{courseId}/quests/{id}` | 퀘스트 수정 |
 | POST | `/courses/{courseId}/quests/{id}/send` | 퀘스트 발송 |
 | DELETE | `/courses/{courseId}/quests/{id}` | 퀘스트 삭제 |
-| POST | `/courses/{courseId}/quests/ai-draft` | AI 초안 생성 (week 파라미터 추가) |
-| GET | `/courses/{courseId}/me/stats` | 학생 개인 통계 |
+| POST | `/courses/{courseId}/quests/ai-draft` | AI 초안 생성 (`week` 파라미터 포함) |
+
+### 학생 통계 / 취약점
+
+| Method | Path | 설명 |
+|--------|------|------|
+| GET | `/courses/{courseId}/me/stats` | 학생 개인 통계 (XP, 정답률, 완료 퀘스트 수) |
 | GET | `/courses/{courseId}/me/weak-points` | 취약 개념 조회 |
+
+### 교강사 분석 (Analytics)
+
+| Method | Path | 설명 |
+|--------|------|------|
 | GET | `/courses/{courseId}/analytics` | 교강사 KPI 조회 |
-| GET | `/courses/{courseId}/analytics/keywords?week=` | 키워드 통계 |
+| GET | `/courses/{courseId}/analytics/keywords?week=` | 키워드 통계 (주차별) |
+| GET | `/courses/{courseId}/analytics/students?grade=` | 등급별 학생 목록 **(선택 구현)** |
+
+### AI 제안 / 설정
+
+| Method | Path | 설명 |
+|--------|------|------|
 | GET | `/courses/{courseId}/ai-proposals` | AI 제안 목록 |
-| GET | `/courses/{courseId}/ai-config` | AI 설정 조회 |
-| PUT | `/courses/{courseId}/ai-config` | AI 설정 저장 |
+| GET | `/courses/{courseId}/ai-config` | AI 가이드 프롬프트 설정 조회 |
+| PUT | `/courses/{courseId}/ai-config` | AI 가이드 프롬프트 설정 저장 |
