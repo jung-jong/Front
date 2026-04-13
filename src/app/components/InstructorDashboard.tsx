@@ -52,6 +52,7 @@ import {
 } from "@/services/students";
 import {
   getQuests,
+  getQuestContent,
   createQuest,
   updateQuest,
   sendQuest as apiSendQuest,
@@ -76,8 +77,6 @@ const difficultyColor: Record<string, string> = {
   보통: "bg-yellow-100 text-yellow-700",
   어려움: "bg-red-100 text-red-700",
 };
-
-const weekOptions = ["4주차", "3주차", "2주차", "1주차"];
 
 // ─── Create Quest Modal ───────────────────────────────────────────────────────
 
@@ -122,7 +121,8 @@ function CreateQuestModal({ courseId, onClose, onSave, initialData, draft }: Cre
   );
   const [deadline, setDeadline] = useState(initialData?.deadline ?? "");
   const [xp, setXp] = useState(initialData?.xp ?? draft?.xp ?? 100);
-  const [description, setDescription] = useState(initialData?.previewContent ?? draft?.description ?? "");
+  // description 우선, previewContent는 fallback
+  const [description, setDescription] = useState(initialData?.description ?? initialData?.previewContent ?? draft?.description ?? "");
   const [questions, setQuestions] = useState<MCQuestion[]>(() => {
     if (draft?.questions && draft.questions.length > 0) return draft.questions;
     return Array.from({ length: initialData?.questionCount ?? draft?.questionCount ?? 3 }, () => ({
@@ -134,8 +134,31 @@ function CreateQuestModal({ courseId, onClose, onSave, initialData, draft }: Cre
   const [optionCount, setOptionCount] = useState(draft?.optionCount ?? 4);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [contentLoading, setContentLoading] = useState(false);
 
   const isEdit = !!initialData;
+
+  // 수정 모드: 기존 문항 내용 불러오기
+  useEffect(() => {
+    if (!isEdit || !initialData) return;
+    setContentLoading(true);
+    getQuestContent(courseId, initialData.id)
+      .then((content) => {
+        const loaded: MCQuestion[] = content.questions.map((q) => ({
+          question: q.question,
+          options: q.options ?? Array(optionCount).fill(""),
+          answer: typeof q.answer === "number" ? q.answer : 0,
+        }));
+        if (loaded.length > 0) {
+          setQuestions(loaded);
+          setQuestionCount(loaded.length);
+          if (loaded[0].options.length > 0) setOptionCount(loaded[0].options.length);
+        }
+      })
+      .catch(() => { /* 콘텐츠 로드 실패 시 빈 문항 유지 */ })
+      .finally(() => setContentLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 문항 수 / 보기 수 변경 시 배열 동기화
   useEffect(() => {
@@ -339,6 +362,11 @@ function CreateQuestModal({ courseId, onClose, onSave, initialData, draft }: Cre
               <label className="text-sm text-gray-600" style={{ fontWeight: 600 }}>문항 편집</label>
               <span className="text-xs bg-[#e0f7f7] text-[#1d6e6e] rounded-full px-2 py-0.5">객관식 4지선다</span>
               <span className="text-xs text-gray-400">번호를 클릭하면 정답으로 설정됩니다.</span>
+              {contentLoading && (
+                <span className="flex items-center gap-1 text-xs text-gray-400">
+                  <Loader2 size={11} className="animate-spin" />문항 불러오는 중...
+                </span>
+              )}
             </div>
             <div className="space-y-4">
               {questions.map((q, idx) => (
@@ -679,7 +707,7 @@ export function InstructorDashboard() {
   const [keywordData, setKeywordData] = useState<KeywordStat[]>([]);
   const [proposals, setProposals] = useState<AiProposal[]>([]);
   const [selectedGrade, setSelectedGrade] = useState<string | null>(null);
-  const [selectedWeek, setSelectedWeek] = useState("4주차");
+  const [selectedWeek, setSelectedWeek] = useState("");
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
   const displayName = user?.name ?? "교강사";
@@ -703,8 +731,20 @@ export function InstructorDashboard() {
       .catch(() => {});
   }, [courseId]);
 
+  // 분석 탭 진입 시 selectedWeek 초기화 (파일 기반 최신 주차 또는 WEEK_OPTIONS 첫 항목)
   useEffect(() => {
-    if (tab !== "analysis" || !courseId) return;
+    if (tab !== "analysis") return;
+    if (!selectedWeek) {
+      const weeks = [...new Set(files.filter((f) => f.week).map((f) => f.week))].sort((a, b) => {
+        const na = parseInt(a) || 0; const nb = parseInt(b) || 0;
+        return nb - na || b.localeCompare(a);
+      });
+      setSelectedWeek(weeks[0] ?? WEEK_OPTIONS[0]);
+    }
+  }, [tab, files]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (tab !== "analysis" || !courseId || !selectedWeek) return;
     setAnalyticsLoading(true);
     Promise.all([
       getAnalytics(courseId).then(setKpi).catch(() => {}),
@@ -1195,88 +1235,104 @@ export function InstructorDashboard() {
                     )}
                   </div>
 
-                  {/* Charts */}
-                  {gradeData.length > 0 && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {/* Donut */}
-                      <div className="bg-white rounded-2xl border border-gray-100 p-6">
-                        <h3 className="text-gray-800 mb-0.5" style={{ fontWeight: 600 }}>클래스 등급 분포</h3>
-                        <p className="text-xs text-gray-400 mb-4">구역 클릭 시 해당 학생 목록 확인 가능</p>
-                        <div className="flex items-center gap-6">
-                          <div style={{ width: 160, height: 160 }}>
-                            <ResponsiveContainer width="100%" height="100%">
-                              <PieChart>
-                                <Pie data={gradeData} cx="50%" cy="50%" innerRadius={45} outerRadius={72} paddingAngle={3} dataKey="value"
-                                  onClick={(d) => setSelectedGrade(selectedGrade === d.name ? null : d.name)} cursor="pointer">
-                                  {gradeData.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={entry.color} opacity={selectedGrade && selectedGrade !== entry.name ? 0.4 : 1} />
-                                  ))}
-                                </Pie>
-                                <Tooltip formatter={(v) => [`${v}명`, ""]} />
-                              </PieChart>
-                            </ResponsiveContainer>
-                          </div>
-                          <div className="space-y-2 flex-1">
-                            {gradeData.map((g) => (
-                              <button key={g.name} onClick={() => setSelectedGrade(selectedGrade === g.name ? null : g.name)}
-                                className={`w-full flex items-center justify-between p-2.5 rounded-xl transition-all text-left ${selectedGrade === g.name ? "ring-2 ring-[#7fd9d9]" : "hover:bg-gray-50"}`}
-                                style={{ background: selectedGrade === g.name ? `${g.color}15` : undefined }}>
-                                <div className="flex items-center gap-2">
-                                  <div className="w-3 h-3 rounded-full" style={{ background: g.color }} />
-                                  <span className="text-sm text-gray-700">{g.name}</span>
-                                </div>
-                                <span className="text-sm text-gray-800" style={{ fontWeight: 600 }}>{g.value}명</span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                        {selectedGrade && (
-                          <div className="mt-4 p-3 bg-[#f0fdfd] rounded-xl border border-[#b3e5e5]">
-                            <p className="text-xs text-[#1d6e6e] mb-2" style={{ fontWeight: 600 }}>
-                              {selectedGrade} 학생 목록 ({gradeData.find((g) => g.name === selectedGrade)?.value}명)
-                            </p>
-                            <div className="flex flex-wrap gap-1">
-                              {Array.from({ length: gradeData.find((g) => g.name === selectedGrade)?.value ?? 0 }).map((_, i) => (
-                                <span key={i} className="text-xs bg-white border border-[#b3e5e5] text-gray-600 rounded-full px-2 py-0.5">학생 {i + 1}</span>
+                  {/* Charts — 등급 분포 + 키워드 분석 (독립적으로 표시) */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Donut — 등급 분포 */}
+                    <div className="bg-white rounded-2xl border border-gray-100 p-6">
+                      <h3 className="text-gray-800 mb-0.5" style={{ fontWeight: 600 }}>클래스 등급 분포</h3>
+                      <p className="text-xs text-gray-400 mb-4">구역 클릭 시 해당 학생 목록 확인 가능</p>
+                      {gradeData.length > 0 ? (
+                        <>
+                          <div className="flex items-center gap-6">
+                            <div style={{ width: 160, height: 160 }}>
+                              <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                  <Pie data={gradeData} cx="50%" cy="50%" innerRadius={45} outerRadius={72} paddingAngle={3} dataKey="value"
+                                    onClick={(d) => setSelectedGrade(selectedGrade === d.name ? null : d.name)} cursor="pointer">
+                                    {gradeData.map((entry, index) => (
+                                      <Cell key={`cell-${index}`} fill={entry.color} opacity={selectedGrade && selectedGrade !== entry.name ? 0.4 : 1} />
+                                    ))}
+                                  </Pie>
+                                  <Tooltip formatter={(v) => [`${v}명`, ""]} />
+                                </PieChart>
+                              </ResponsiveContainer>
+                            </div>
+                            <div className="space-y-2 flex-1">
+                              {gradeData.map((g) => (
+                                <button key={g.name} onClick={() => setSelectedGrade(selectedGrade === g.name ? null : g.name)}
+                                  className={`w-full flex items-center justify-between p-2.5 rounded-xl transition-all text-left ${selectedGrade === g.name ? "ring-2 ring-[#7fd9d9]" : "hover:bg-gray-50"}`}
+                                  style={{ background: selectedGrade === g.name ? `${g.color}15` : undefined }}>
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-3 h-3 rounded-full" style={{ background: g.color }} />
+                                    <span className="text-sm text-gray-700">{g.name}</span>
+                                  </div>
+                                  <span className="text-sm text-gray-800" style={{ fontWeight: 600 }}>{g.value}명</span>
+                                </button>
                               ))}
                             </div>
                           </div>
-                        )}
-                      </div>
-
-                      {/* Keyword */}
-                      <div className="bg-white rounded-2xl border border-gray-100 p-6">
-                        <div className="flex items-center justify-between mb-0.5">
-                          <h3 className="text-gray-800" style={{ fontWeight: 600 }}>학생 질문 키워드 분석</h3>
-                          <div className="relative">
-                            <select value={selectedWeek} onChange={(e) => setSelectedWeek(e.target.value)}
-                              className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 pr-7 appearance-none bg-white text-gray-600 outline-none cursor-pointer">
-                              {weekOptions.map((w) => <option key={w}>{w}</option>)}
-                            </select>
-                            <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                          </div>
+                          {selectedGrade && (
+                            <div className="mt-4 p-3 bg-[#f0fdfd] rounded-xl border border-[#b3e5e5]">
+                              <p className="text-xs text-[#1d6e6e] mb-2" style={{ fontWeight: 600 }}>
+                                {selectedGrade} 학생 목록 ({gradeData.find((g) => g.name === selectedGrade)?.value}명)
+                              </p>
+                              <div className="flex flex-wrap gap-1">
+                                {Array.from({ length: gradeData.find((g) => g.name === selectedGrade)?.value ?? 0 }).map((_, i) => (
+                                  <span key={i} className="text-xs bg-white border border-[#b3e5e5] text-gray-600 rounded-full px-2 py-0.5">학생 {i + 1}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="h-[180px] flex items-center justify-center text-gray-300">
+                          <p className="text-sm">등급 데이터가 없습니다.</p>
                         </div>
-                        <p className="text-xs text-gray-400 mb-4">주차별로 자주 나온 질문 키워드를 확인하세요</p>
-                        {keywordData.length > 0 ? (
-                          <div style={{ height: 180 }}>
-                            <ResponsiveContainer width="100%" height="100%">
-                              <BarChart data={keywordData} layout="vertical" margin={{ left: 8, right: 24, top: 0, bottom: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
-                                <XAxis type="number" tick={{ fontSize: 11, fill: "#9CA3AF" }} axisLine={false} tickLine={false} />
-                                <YAxis type="category" dataKey="keyword" tick={{ fontSize: 12, fill: "#4B5563" }} axisLine={false} tickLine={false} width={52} />
-                                <Tooltip formatter={(v) => [`${v}회`, "질문 수"]} cursor={{ fill: "#F3F4F6" }} />
-                                <Bar dataKey="count" fill="#37b1b1" radius={[0, 6, 6, 0]} barSize={18} />
-                              </BarChart>
-                            </ResponsiveContainer>
-                          </div>
-                        ) : (
-                          <div className="h-[180px] flex items-center justify-center text-gray-300">
-                            <p className="text-sm">해당 주차 데이터가 없습니다.</p>
-                          </div>
-                        )}
-                      </div>
+                      )}
                     </div>
-                  )}
+
+                    {/* Keyword — 키워드 분석 (gradeData 여부와 무관하게 항상 표시) */}
+                    <div className="bg-white rounded-2xl border border-gray-100 p-6">
+                      <div className="flex items-center justify-between mb-0.5">
+                        <h3 className="text-gray-800" style={{ fontWeight: 600 }}>학생 질문 키워드 분석</h3>
+                        <div className="relative">
+                          <select value={selectedWeek} onChange={(e) => setSelectedWeek(e.target.value)}
+                            className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 pr-7 appearance-none bg-white text-gray-600 outline-none cursor-pointer">
+                            {/* 업로드된 파일 기준 주차 목록, 없으면 WEEK_OPTIONS fallback */}
+                            {files.length > 0
+                              ? [...new Set(files.filter((f) => f.week).map((f) => f.week))]
+                                  .sort((a, b) => {
+                                    const na = parseInt(a) || 0;
+                                    const nb = parseInt(b) || 0;
+                                    return nb - na || b.localeCompare(a);
+                                  })
+                                  .map((w) => <option key={w} value={w}>{w}</option>)
+                              : WEEK_OPTIONS.map((w) => <option key={w} value={w}>{w}</option>)
+                            }
+                          </select>
+                          <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-400 mb-4">주차별로 자주 나온 질문 키워드를 확인하세요</p>
+                      {keywordData.length > 0 ? (
+                        <div style={{ height: 180 }}>
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={keywordData} layout="vertical" margin={{ left: 8, right: 24, top: 0, bottom: 0 }}>
+                              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
+                              <XAxis type="number" tick={{ fontSize: 11, fill: "#9CA3AF" }} axisLine={false} tickLine={false} />
+                              <YAxis type="category" dataKey="keyword" tick={{ fontSize: 12, fill: "#4B5563" }} axisLine={false} tickLine={false} width={52} />
+                              <Tooltip formatter={(v) => [`${v}회`, "질문 수"]} cursor={{ fill: "#F3F4F6" }} />
+                              <Bar dataKey="count" fill="#37b1b1" radius={[0, 6, 6, 0]} barSize={18} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      ) : (
+                        <div className="h-[180px] flex items-center justify-center text-gray-300">
+                          <p className="text-sm">해당 주차 데이터가 없습니다.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
                   {/* AI 제안 */}
                   <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">

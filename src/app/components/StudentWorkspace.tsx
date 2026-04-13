@@ -633,14 +633,30 @@ export function StudentWorkspace() {
                     <span className="text-2xl text-[#1d6e6e]" style={{ fontWeight: 700 }}>{myStats.grade}</span>
                     <span className="text-xs text-gray-400 pb-1">등급</span>
                   </div>
-                  <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                    <span>다음 등급까지</span>
-                    <span className="text-[#37b1b1]" style={{ fontWeight: 600 }}>{myStats.xp} / {myStats.xpToNext} XP</span>
-                  </div>
-                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-[#37b1b1] to-[#1d6e6e] rounded-full"
-                      style={{ width: `${Math.min(100, Math.round(myStats.xp / myStats.xpToNext * 100))}%` }} />
-                  </div>
+                  {myStats.xpToNext > 0 ? (
+                    <>
+                      <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                        <span>다음 등급까지</span>
+                        <span className="text-[#37b1b1]" style={{ fontWeight: 600 }}>
+                          {myStats.xp} / {myStats.xpToNext} XP
+                        </span>
+                      </div>
+                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-[#37b1b1] to-[#1d6e6e] rounded-full transition-all duration-500"
+                          style={{ width: `${Math.min(100, Math.round(myStats.xp / myStats.xpToNext * 100))}%` }} />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                        <span className="text-yellow-600" style={{ fontWeight: 600 }}>🏆 최고 등급 달성!</span>
+                        <span className="text-[#37b1b1]" style={{ fontWeight: 600 }}>{myStats.xp} XP</span>
+                      </div>
+                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-yellow-400 to-yellow-500 rounded-full" style={{ width: "100%" }} />
+                      </div>
+                    </>
+                  )}
                 </div>
               </>
             )}
