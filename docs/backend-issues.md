@@ -1,6 +1,7 @@
 # Custom-TA 백엔드 이슈 및 API 요구사항 문서
 
 작성일: 2026-04-13  
+최종 수정: 2026-04-13 (v2.2 프론트엔드 패치 반영)  
 대상: 백엔드 개발팀  
 버전: v2
 
@@ -60,6 +61,9 @@
 ### 프론트엔드 조치 (완료)
 - 퀘스트 제출 성공(`POST /courses/{courseId}/quests/{questId}/submit`) 후, 로컬 상태에서 해당 퀘스트의 `completed: true`로 마킹
 - 완료된 퀘스트는 "결과 보기" 버튼만 표시, 재제출 불가 UI 적용
+- **임시 조치 (백엔드 지원 전까지)**: 완료 퀘스트 ID를 `localStorage`에 저장하여 새로고침 후에도 "결과 보기" 상태 유지
+  - Key: `cta_completed_quests_{courseId}`, Value: 완료된 퀘스트 ID 배열 (JSON)
+  - 백엔드가 `completed: true` 필드를 반환하면 localStorage 데이터와 병합하여 표시
 
 ### 백엔드 확인 사항
 1. `GET /courses/{courseId}/quests` — 학생 입장에서 호출 시:
@@ -100,6 +104,7 @@
 
 ### 프론트엔드 조치 (완료)
 - 퀘스트 제출 완료 콜백에서 `GET /courses/{courseId}/me/stats`를 재호출하여 즉시 갱신
+- 채팅 내 O/X 퀴즈 선택 시에도 `GET /courses/{courseId}/me/stats` 재호출하여 정답률 반영 시도
 
 ### 백엔드 확인 사항
 1. `POST /courses/{courseId}/quests/{questId}/submit` 처리 시:
@@ -109,12 +114,17 @@
 
 2. `GET /courses/{courseId}/me/stats` — 최신 데이터 반환 확인:
    - 캐싱이 있다면 제출 후 캐시 무효화 처리 필요
+   - 퀘스트 제출 후 호출 시 갱신된 XP·완료 수가 즉시 반영되어야 함
 
-3. **채팅 내 O/X 퀴즈** 정답률 반영 (미구현 상태):
+3. **채팅 내 O/X 퀴즈** 정답률 반영 (백엔드 미구현 상태):
    - 현재 채팅 메시지의 `quiz` 필드로 퀴즈가 제공되나, 학생의 정답/오답 결과를 백엔드에 전송하는 API 없음
-   - 필요 시 신규 API: `POST /courses/{courseId}/quiz/submit`
-   - Request body: `{ "messageId": "msg-001", "selected": 0, "isCorrect": true }`
+   - **신규 API 필요**: `POST /courses/{courseId}/quiz/submit`
+   - Request body:
+     ```json
+     { "messageId": "msg-001", "selected": 0, "isCorrect": true }
+     ```
    - 이 데이터가 `quizAccuracy` 통계에 반영되어야 함
+   - 프론트엔드는 API 구현 완료 시 즉시 연동 가능한 구조로 준비되어 있음
 
 ### Stats 응답 스키마
 ```json

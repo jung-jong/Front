@@ -243,6 +243,16 @@ AiDraftRequest → scope, difficulty, questionCount, optionCount, targetGroup, w
 
 ## 최근 변경 이력
 
+### v2.2 (2026-04-13)
+
+| 분류 | 내용 |
+|------|------|
+| **UI 개선** | 퀘스트 목록 재구성 — 미완료/완료 섹션 분리 + 전체 진행률 프로그레스 바 |
+| **기능 개선** | 완료 퀘스트 localStorage 영속화 — 새로고침 후에도 완료 상태 유지 (백엔드 `completed` 미지원 환경 호환) |
+| **기능 개선** | 채팅 O/X 퀴즈 선택 시 stats(정답률) 즉시 재조회 |
+| **버그 수정** | 퀘스트 결과 확인(viewOnly) 모드에서 제출 점수 결과 표시되도록 수정 |
+| **문서** | `docs/backend-issues.md` — localStorage 임시 조치 및 채팅 퀴즈 API 요구사항 업데이트 |
+
 ### v2.1 (2026-04-13)
 
 | 분류 | 내용 |

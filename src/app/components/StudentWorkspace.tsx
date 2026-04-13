@@ -203,7 +203,7 @@ function QuestStartModal({ quest, courseId, onClose, onComplete, viewOnly = fals
                 <p className="text-sm text-gray-600 leading-relaxed">{content.intro}</p>
               </div>
 
-              {submitted && result && !viewOnly && (
+              {submitted && result && (
                 <div className={`rounded-xl p-4 mb-5 flex items-center gap-3 ${result.score === result.total ? "bg-green-50 border border-green-200" : "bg-orange-50 border border-orange-200"}`}>
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${result.score === result.total ? "bg-green-100" : "bg-orange-100"}`}>
                     {result.score === result.total ? <Trophy size={18} className="text-green-600" /> : <Award size={18} className="text-orange-500" />}
@@ -347,6 +347,21 @@ export function StudentWorkspace() {
 
   const [quests, setQuests] = useState<Quest[]>([]);
   const [questsLoading, setQuestsLoading] = useState(true);
+
+  // ── 완료 퀘스트 localStorage 영속화 ───────────────────────────────────────
+  const completedQuestStorageKey = `cta_completed_quests_${courseId}`;
+
+  const getLocalCompleted = (): string[] => {
+    try { return JSON.parse(localStorage.getItem(completedQuestStorageKey) ?? "[]"); }
+    catch { return []; }
+  };
+
+  const addLocalCompleted = (questId: string) => {
+    const ids = getLocalCompleted();
+    if (!ids.includes(questId)) {
+      localStorage.setItem(completedQuestStorageKey, JSON.stringify([...ids, questId]));
+    }
+  };
   const [weakPoints, setWeakPoints] = useState<WeakPoint[]>([]);
   const [myStats, setMyStats] = useState<{ questionCount: number; quizAccuracy: number; completedQuests: number; totalQuests: number; grade: string; xp: number; xpToNext: number } | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -373,7 +388,14 @@ export function StudentWorkspace() {
       .finally(() => setMessagesLoading(false));
 
     getQuests(courseId)
-      .then(setQuests)
+      .then((data) => {
+        const localCompleted = getLocalCompleted();
+        // 백엔드가 completed 필드를 미반환해도 로컬 완료 상태를 병합
+        setQuests(data.map((q) => ({
+          ...q,
+          completed: q.completed || localCompleted.includes(q.id),
+        })));
+      })
       .catch(() => setQuests([]))
       .finally(() => setQuestsLoading(false));
 
@@ -438,10 +460,12 @@ export function StudentWorkspace() {
   }, [courseId]);
 
   const handleQuestComplete = useCallback((questId: string) => {
+    // localStorage에 영속 저장 (새로고침 후에도 완료 상태 유지)
+    addLocalCompleted(questId);
     setQuests((prev) => prev.map((q) => q.id === questId ? { ...q, completed: true } : q));
     // 퀘스트 완료 후 stats(XP, 완료 퀘스트 수) 즉시 갱신
     getMyStats(courseId).then(setMyStats).catch(() => {});
-  }, [courseId]);
+  }, [courseId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sendMessage = useCallback(async () => {
     if (!input.trim() || sending) return;
@@ -725,7 +749,12 @@ export function StudentWorkspace() {
                             const isCorrect = i === msg.quiz!.answer;
                             const showResult = activeQuiz.msgId === msg.id && activeQuiz.submitted;
                             return (
-                              <button key={opt} onClick={() => { if (!activeQuiz.submitted) setActiveQuiz({ msgId: msg.id, selected: i, submitted: true }); }}
+                              <button key={opt} onClick={() => {
+                                if (activeQuiz.msgId === msg.id && activeQuiz.submitted) return;
+                                setActiveQuiz({ msgId: msg.id, selected: i, submitted: true });
+                                // 퀴즈 응답 후 stats 갱신 (정답률 반영)
+                                setTimeout(() => getMyStats(courseId).then(setMyStats).catch(() => {}), 500);
+                              }}
                                 className={`flex-1 py-2 rounded-lg text-sm transition-colors ${showResult ? isCorrect ? "bg-green-100 text-green-700 border border-green-300" : isSelected ? "bg-red-100 text-red-700 border border-red-300" : "bg-white text-gray-400 border border-gray-200" : isSelected ? "bg-[#e0f7f7] text-[#1d6e6e]" : "bg-white text-gray-700 border border-gray-200 hover:bg-[#f0fdfd]"}`}>
                                 {opt}
                               </button>
@@ -901,59 +930,36 @@ export function StudentWorkspace() {
                 </div>
               )}
 
-              {!questsLoading && quests.filter((q) => q.type === "ai").length > 0 && (
-                <>
-                  <p className="text-xs text-gray-400 mb-2" style={{ fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>🤖 AI 퀘스트</p>
-                  {quests.filter((q) => q.type === "ai").map((q) => (
-                    <div key={q.id} className={`border rounded-xl p-4 ${q.completed ? "border-green-100 bg-green-50/40" : "border-gray-100"}`}>
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <p className="text-sm text-gray-800 truncate" style={{ fontWeight: 600 }}>{q.title}</p>
-                          {q.completed && (
-                            <span className="text-xs bg-green-100 text-green-700 rounded-full px-2 py-0.5 flex-shrink-0 flex items-center gap-1">
-                              <CheckCircle size={10} />완료
-                            </span>
-                          )}
-                        </div>
-                        {q.difficulty && <span className={`text-xs rounded-full px-2 py-0.5 flex-shrink-0 ${difficultyColor[q.difficulty]}`}>{q.difficulty}</span>}
-                      </div>
-                      {q.description && <p className="text-xs text-gray-500 mb-3">{q.description}</p>}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3 text-xs text-gray-400">
-                          {q.deadline && <span>마감 {q.deadline}</span>}
-                          {q.xp && <span className="flex items-center gap-1 text-yellow-600"><Zap size={10} />{q.xp} XP</span>}
-                        </div>
-                        {q.completed ? (
-                          <button onClick={() => { setShowQuestModal(false); setActiveQuest(q); setQuestViewOnly(true); }}
-                            className="flex items-center gap-1.5 text-xs bg-gray-200 text-gray-600 rounded-lg px-3 py-1.5 hover:bg-gray-300 transition-colors">
-                            <BookOpen size={11} />결과 보기
-                          </button>
-                        ) : (
-                          <button onClick={() => { setShowQuestModal(false); setActiveQuest(q); setQuestViewOnly(false); }}
-                            className="flex items-center gap-1.5 text-xs bg-[#37b1b1] text-white rounded-lg px-3 py-1.5 hover:bg-[#2a9090] transition-colors">
-                            <Play size={11} />시작하기
-                          </button>
-                        )}
-                      </div>
+              {/* 진행 현황 요약 */}
+              {!questsLoading && quests.length > 0 && (
+                <div className="flex items-center gap-3 bg-[#f0fdfd] border border-[#b3e5e5] rounded-xl px-4 py-3 mb-1">
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs text-[#1d6e6e]" style={{ fontWeight: 600 }}>전체 진행률</span>
+                      <span className="text-xs text-[#37b1b1]" style={{ fontWeight: 700 }}>
+                        {quests.filter((q) => q.completed).length} / {quests.length} 완료
+                      </span>
                     </div>
-                  ))}
-                </>
+                    <div className="h-2 bg-white rounded-full overflow-hidden border border-[#b3e5e5]">
+                      <div
+                        className="h-full bg-gradient-to-r from-[#37b1b1] to-[#1d6e6e] rounded-full transition-all duration-500"
+                        style={{ width: `${Math.round(quests.filter((q) => q.completed).length / quests.length * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
               )}
 
-              {!questsLoading && quests.filter((q) => q.type === "professor").length > 0 && (
+              {/* 미완료 퀘스트 — 교수님 */}
+              {!questsLoading && quests.filter((q) => q.type === "professor" && !q.completed).length > 0 && (
                 <>
-                  <p className="text-xs text-gray-400 mt-4 mb-2" style={{ fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>👨‍🏫 교수님 퀘스트</p>
-                  {quests.filter((q) => q.type === "professor").map((q) => (
-                    <div key={q.id} className={`border-2 rounded-xl p-4 ${q.completed ? "border-green-200 bg-green-50/40" : "border-yellow-300 bg-yellow-50"}`}>
+                  <p className="text-xs text-gray-400 mt-2 mb-2" style={{ fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>👨‍🏫 교수님 퀘스트</p>
+                  {quests.filter((q) => q.type === "professor" && !q.completed).map((q) => (
+                    <div key={q.id} className="border-2 border-yellow-300 bg-yellow-50 rounded-xl p-4">
                       <div className="flex items-start justify-between gap-2 mb-2">
                         <div className="flex items-center gap-2 flex-1 min-w-0">
-                          {!q.completed && <Star size={14} className="text-yellow-500 flex-shrink-0" />}
+                          <Star size={14} className="text-yellow-500 flex-shrink-0" />
                           <p className="text-sm text-gray-800 truncate" style={{ fontWeight: 600 }}>{q.title}</p>
-                          {q.completed && (
-                            <span className="text-xs bg-green-100 text-green-700 rounded-full px-2 py-0.5 flex-shrink-0 flex items-center gap-1">
-                              <CheckCircle size={10} />완료
-                            </span>
-                          )}
                         </div>
                         {q.difficulty && <span className={`text-xs rounded-full px-2 py-0.5 flex-shrink-0 ${difficultyColor[q.difficulty]}`}>{q.difficulty}</span>}
                       </div>
@@ -963,17 +969,66 @@ export function StudentWorkspace() {
                           {q.deadline && <span>마감 {q.deadline}</span>}
                           {q.xp && <span className="flex items-center gap-1 text-yellow-600"><Zap size={10} />{q.xp} XP</span>}
                         </div>
-                        {q.completed ? (
+                        <button onClick={() => { setShowQuestModal(false); setActiveQuest(q); setQuestViewOnly(false); }}
+                          className="flex items-center gap-1.5 text-xs bg-yellow-500 text-white rounded-lg px-3 py-1.5 hover:bg-yellow-600 transition-colors">
+                          <Play size={11} />시작하기
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {/* 미완료 퀘스트 — AI */}
+              {!questsLoading && quests.filter((q) => q.type === "ai" && !q.completed).length > 0 && (
+                <>
+                  <p className="text-xs text-gray-400 mt-2 mb-2" style={{ fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>🤖 AI 퀘스트</p>
+                  {quests.filter((q) => q.type === "ai" && !q.completed).map((q) => (
+                    <div key={q.id} className="border border-gray-100 rounded-xl p-4">
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <p className="text-sm text-gray-800 truncate flex-1" style={{ fontWeight: 600 }}>{q.title}</p>
+                        {q.difficulty && <span className={`text-xs rounded-full px-2 py-0.5 flex-shrink-0 ${difficultyColor[q.difficulty]}`}>{q.difficulty}</span>}
+                      </div>
+                      {q.description && <p className="text-xs text-gray-500 mb-3">{q.description}</p>}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3 text-xs text-gray-400">
+                          {q.deadline && <span>마감 {q.deadline}</span>}
+                          {q.xp && <span className="flex items-center gap-1 text-yellow-600"><Zap size={10} />{q.xp} XP</span>}
+                        </div>
+                        <button onClick={() => { setShowQuestModal(false); setActiveQuest(q); setQuestViewOnly(false); }}
+                          className="flex items-center gap-1.5 text-xs bg-[#37b1b1] text-white rounded-lg px-3 py-1.5 hover:bg-[#2a9090] transition-colors">
+                          <Play size={11} />시작하기
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {/* 완료된 퀘스트 섹션 */}
+              {!questsLoading && quests.filter((q) => q.completed).length > 0 && (
+                <>
+                  <div className="flex items-center gap-2 mt-4 mb-2">
+                    <div className="flex-1 h-px bg-gray-100" />
+                    <p className="text-xs text-gray-400 flex items-center gap-1.5 flex-shrink-0" style={{ fontWeight: 600 }}>
+                      <CheckCircle size={11} className="text-green-500" />완료한 퀘스트
+                    </p>
+                    <div className="flex-1 h-px bg-gray-100" />
+                  </div>
+                  {quests.filter((q) => q.completed).map((q) => (
+                    <div key={q.id} className="border border-green-100 bg-green-50/40 rounded-xl p-3.5 opacity-80">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <CheckCircle size={13} className="text-green-500 flex-shrink-0" />
+                          <p className="text-sm text-gray-700 truncate" style={{ fontWeight: 500 }}>{q.title}</p>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {q.xp && <span className="text-xs text-yellow-600 flex items-center gap-0.5"><Zap size={9} />{q.xp}</span>}
                           <button onClick={() => { setShowQuestModal(false); setActiveQuest(q); setQuestViewOnly(true); }}
-                            className="flex items-center gap-1.5 text-xs bg-gray-200 text-gray-600 rounded-lg px-3 py-1.5 hover:bg-gray-300 transition-colors">
-                            <BookOpen size={11} />결과 보기
+                            className="text-xs bg-white border border-green-200 text-green-700 rounded-lg px-3 py-1.5 hover:bg-green-50 transition-colors flex items-center gap-1">
+                            <BookOpen size={10} />결과 보기
                           </button>
-                        ) : (
-                          <button onClick={() => { setShowQuestModal(false); setActiveQuest(q); setQuestViewOnly(false); }}
-                            className="flex items-center gap-1.5 text-xs bg-yellow-500 text-white rounded-lg px-3 py-1.5 hover:bg-yellow-600 transition-colors">
-                            <Play size={11} />시작하기
-                          </button>
-                        )}
+                        </div>
                       </div>
                     </div>
                   ))}
